@@ -15,25 +15,20 @@ console.log(`Deploying AI Hub core to ${config.name} (${config.chainId})`);
 
 const points = await ethers.deployContract("PointsModule", [admin]);
 await points.waitForDeployment();
-
 const policy = await ethers.deployContract("RewardPolicyEngine", [admin, points.target]);
 await policy.waitForDeployment();
-
 const eligibility = await ethers.deployContract("EligibilityEngine", [admin]);
 await eligibility.waitForDeployment();
-
 const registry = await ethers.deployContract("ActivityRegistry", [admin]);
 await registry.waitForDeployment();
-
 const verifierRegistry = await ethers.deployContract("VerifierRegistry", [admin]);
 await verifierRegistry.waitForDeployment();
-
-const activityReporter = await ethers.deployContract("ActivityReporter", [admin, registry.target]);
+const chainRegistry = await ethers.deployContract("ChainRegistry", [admin]);
+await chainRegistry.waitForDeployment();
+const activityReporter = await ethers.deployContract("ActivityReporter", [admin, registry.target, chainRegistry.target]);
 await activityReporter.waitForDeployment();
-
 const vault = await ethers.deployContract("RewardVault", [admin]);
 await vault.waitForDeployment();
-
 const router = await ethers.deployContract("ClaimRouter", [admin, eligibility.target, policy.target, vault.target]);
 await router.waitForDeployment();
 
@@ -47,6 +42,7 @@ await saveDeployment({
     EligibilityEngine: eligibility.target.toString(),
     ActivityRegistry: registry.target.toString(),
     VerifierRegistry: verifierRegistry.target.toString(),
+    ChainRegistry: chainRegistry.target.toString(),
     ActivityReporter: activityReporter.target.toString(),
     RewardVault: vault.target.toString(),
     ClaimRouter: router.target.toString(),
