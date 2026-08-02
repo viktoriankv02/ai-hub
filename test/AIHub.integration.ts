@@ -33,7 +33,6 @@ describe("AI Hub full integration", function () {
     await eligibility.setRule(policyId, 0, 0, 1, 1000n, true, true);
     await eligibility.initialize(policyId, user.address);
 
-    // After configuration, policy and eligibility are callable only through ClaimRouter.
     await policy.transferOwnership(router.target);
     await eligibility.transferOwnership(router.target);
 
@@ -45,15 +44,14 @@ describe("AI Hub full integration", function () {
   it("runs verified activity -> policy -> eligibility -> points -> native reward", async function () {
     const { reporter, user, points, vault, router, registry, activityReporter, activityType, projectId, policyId } = await deploySystem();
 
-    const tx = await activityReporter.connect(reporter).submit(
+    await (await activityReporter.connect(reporter).submit(
       user.address,
       BASE_SEPOLIA,
       activityType,
       projectId,
       ethers.id("BASE_TX_001"),
       true,
-    );
-    await tx.wait();
+    )).wait();
 
     expect(await registry.activityCount(user.address)).to.equal(1n);
     const activity = await registry.getActivity(user.address, 0);
@@ -62,18 +60,12 @@ describe("AI Hub full integration", function () {
     expect(activity.verified).to.equal(true);
 
     const claimId = ethers.id("CLAIM_BASE_001");
-    const activityId = 0n;
+    const activityId = ethers.zeroPadValue(ethers.toBeHex(1), 32);
     const reward = ethers.parseEther("0.1");
     const before = await ethers.provider.getBalance(user.address);
+    const claimNative = router.getFunction("claimNative(bytes32,bytes32,bytes32,address,bool,uint256)");
 
-    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-      claimId,
-      policyId,
-      ethers.zeroPadValue(ethers.toBeHex(activityId), 32),
-      user.address,
-      true,
-      reward,
-    );
+    await claimNative(claimId, policyId, activityId, user.address, true, reward);
 
     const after = await ethers.provider.getBalance(user.address);
     expect(after - before).to.equal(reward);
@@ -85,45 +77,33 @@ describe("AI Hub full integration", function () {
   it("prevents a second claim for the same policy/user", async function () {
     const { reporter, user, router, activityReporter, activityType, projectId, policyId } = await deploySystem();
 
-    await activityReporter.connect(reporter).submit(
+    await (await activityReporter.connect(reporter).submit(
       user.address,
       BASE_SEPOLIA,
       activityType,
       projectId,
       ethers.id("BASE_TX_002"),
       true,
-    );
+    )).wait();
 
     const firstClaim = ethers.id("CLAIM_BASE_002");
     const secondClaim = ethers.id("CLAIM_BASE_003");
-    const activityId = ethers.zeroPadValue(ethers.toBeHex(0), 32);
+    const activityId = ethers.zeroPadValue(ethers.toBeHex(1), 32);
+    const claimNative = router.getFunction("claimNative(bytes32,bytes32,bytes32,address,bool,uint256)");
 
-    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-      firstClaim,
-      policyId,
-      activityId,
-      user.address,
-      true,
-      ethers.parseEther("0.01"),
-    );
+    await claimNative(firstClaim, policyId, activityId, user.address, true, ethers.parseEther("0.01"));
 
     await expect(
-      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-        secondClaim,
-        policyId,
-        activityId,
-        user.address,
-        true,
-        ethers.parseEther("0.01"),
-      ),
+      claimNative(secondClaim, policyId, activityId, user.address, true, ethers.parseEther("0.01")),
     ).to.be.revertedWith("Policy: already claimed");
   });
 
   it("blocks unverified claims before policy consumption", async function () {
     const { user, points, router, policyId } = await deploySystem();
+    const claimNative = router.getFunction("claimNative(bytes32,bytes32,bytes32,address,bool,uint256)");
 
     await expect(
-      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+      claimNative(
         ethers.id("CLAIM_UNVERIFIED"),
         policyId,
         ethers.id("UNVERIFIED_ACTIVITY"),
