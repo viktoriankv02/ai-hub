@@ -15,10 +15,9 @@ describe("AI Hub modules", function () {
   it("awards and revokes points", async function () {
     const { owner, user, points } = await deploy();
     const reason = ethers.id("QUEST_COMPLETED");
-
+    await points.setPointWriter(owner.address, true);
     await points.awardPoints(user.address, 100n, reason);
     expect(await points.pointsOf(user.address)).to.equal(100n);
-
     await points.revokePoints(user.address, 25n, reason);
     expect(await points.pointsOf(user.address)).to.equal(75n);
     expect(await points.totalPoints()).to.equal(75n);
@@ -28,13 +27,11 @@ describe("AI Hub modules", function () {
   it("uses reward rules to credit the points ledger", async function () {
     const { owner, user, points, rewards } = await deploy();
     const reason = ethers.id("TESTNET_ACTIVITY");
-
-    await points.transferOwnership(rewards.target);
+    await points.setPointWriter(rewards.target, true);
     await rewards.setReward(reason, 50n);
     await rewards.grantReward(user.address, reason);
-
     expect(await points.pointsOf(user.address)).to.equal(50n);
-    expect(await points.owner()).to.equal(rewards.target);
+    expect(await points.pointWriters(rewards.target)).to.equal(true);
     expect(await rewards.owner()).to.equal(owner.address);
   });
 
@@ -42,15 +39,10 @@ describe("AI Hub modules", function () {
     const { user, quests } = await deploy();
     const questId = ethers.id("FIRST_QUEST");
     const activity = ethers.id("SWAP");
-
     await quests.createQuest(questId, activity, 25n);
-
     const connected = quests.connect(user);
     expect(await connected.completeQuest(questId)).to.not.be.undefined;
     expect(await quests.hasCompleted(questId, user.address)).to.equal(true);
-
-    await expect(connected.completeQuest(questId)).to.be.revertedWith(
-      "Quest: already completed",
-    );
+    await expect(connected.completeQuest(questId)).to.be.revertedWith("Quest: already completed");
   });
 });
