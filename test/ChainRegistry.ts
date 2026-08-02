@@ -4,46 +4,41 @@ import { network } from "hardhat";
 const { ethers } = await network.connect();
 
 describe("ChainRegistry", function () {
-  it("registers an authorized EVM adapter", async function () {
-    const [owner] = await ethers.getSigners();
+  it("rejects an unauthorized adapter and registers an authorized chain", async function () {
+    const [owner, adapter] = await ethers.getSigners();
     const registry = await ethers.deployContract("ChainRegistry", [owner.address]);
-    const adapter = await ethers.deployContract("EVMChainAdapter", [
-      owner.address,
-      84532,
-      ethers.id("EVM"),
-    ]);
+    const nameHash = ethers.id("BASE_SEPOLIA");
+    const vmType = ethers.id("EVM");
 
-    await registry.setAdapterAuthorized(adapter.target, true);
-    await registry.registerChain(
-      84532,
-      ethers.id("BASE_SEPOLIA"),
-      ethers.id("EVM"),
-      adapter.target,
-      true,
-    );
+    await expect(
+      registry.registerChain(84532n, nameHash, vmType, adapter.address, true, true),
+    ).to.be.revertedWith("Chain: adapter unauthorized");
 
-    const chain = await registry.getChain(84532);
+    await registry.setAdapterAuthorized(adapter.address, true);
+    await registry.registerChain(84532n, nameHash, vmType, adapter.address, true, true);
+
+    const chain = await registry.getChain(84532n);
     expect(chain.chainId).to.equal(84532n);
-    expect(chain.adapter).to.equal(adapter.target);
+    expect(chain.nameHash).to.equal(nameHash);
+    expect(chain.vmType).to.equal(vmType);
+    expect(chain.adapter).to.equal(adapter.address);
     expect(chain.active).to.equal(true);
-    expect(await registry.isSupported(84532)).to.equal(true);
+    expect(chain.testnet).to.equal(true);
+    expect(await registry.chainCount()).to.equal(1n);
   });
 
-  it("verifies activity through an EVM adapter", async function () {
-    const [owner, user] = await ethers.getSigners();
-    const adapter = await ethers.deployContract("EVMChainAdapter", [
-      owner.address,
-      11155111,
-      ethers.id("EVM"),
-    ]);
+  it("supports lookup by name and controlled deactivation", async function () {
+    const [owner, adapter] = await ethers.getSigners();
+    const registry = await ethers.deployContract("ChainRegistry", [owner.address]);
+    const nameHash = ethers.id("SEPOLIA");
 
-    const activityId = ethers.id("ACTIVITY_001");
-    expect(await adapter.verifyActivity(activityId, user.address, "0x")).to.equal(false);
+    await registry.setAdapterAuthorized(adapter.address, true);
+    await registry.registerChain(11155111n, nameHash, ethers.id("EVM"), adapter.address, true, true);
 
-    await adapter.setActivityVerified(activityId, user.address, true);
-    expect(await adapter.verifyActivity(activityId, user.address, "0x")).to.equal(true);
+    expect((await registry.getChainByName(nameHash)).chainId).to.equal(11155111n);
+    expect(await registry.isSupported(11155111n)).to.equal(true);
 
-    await adapter.setActivityVerified(activityId, user.address, false);
-    expect(await adapter.verifyActivity(activityId, user.address, "0x")).to.equal(false);
+    await registry.setChainActive(11155111n, false);
+    expect(await registry.isSupported(11155111n)).to.equal(false);
   });
 });
