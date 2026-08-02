@@ -7,18 +7,31 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @notice Stores protocol points earned from verified activities.
 contract PointsModule is Ownable {
     mapping(address => uint256) private _points;
+    mapping(address => bool) public pointWriters;
     uint256 public totalPoints;
 
+    event PointWriterSet(address indexed writer, bool enabled);
     event PointsAwarded(address indexed user, uint256 amount, bytes32 indexed reason);
     event PointsRevoked(address indexed user, uint256 amount, bytes32 indexed reason);
 
     constructor(address initialOwner) Ownable(initialOwner) {}
 
+    modifier onlyWriter() {
+        require(pointWriters[msg.sender], "Points: unauthorized writer");
+        _;
+    }
+
+    function setPointWriter(address writer, bool enabled) external onlyOwner {
+        require(writer != address(0), "Points: zero writer");
+        pointWriters[writer] = enabled;
+        emit PointWriterSet(writer, enabled);
+    }
+
     function awardPoints(
         address user,
         uint256 amount,
         bytes32 reason
-    ) external onlyOwner {
+    ) external onlyWriter {
         require(user != address(0), "Points: zero user");
         require(amount > 0, "Points: zero amount");
         require(reason != bytes32(0), "Points: empty reason");
