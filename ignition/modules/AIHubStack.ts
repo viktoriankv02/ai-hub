@@ -8,5 +8,8 @@ export default buildModule("AIHubStack", (m) => {
   const hub = m.contract("AIHub", [deployer]);
   const quests = m.contract("QuestModule", [deployer]);
 
+  // RewardEngine becomes the authorized writer to the points ledger.
+  m.call(points, "transferOwnership", [rewards]);
+
   return { hub, points, quests, rewards };
 });
