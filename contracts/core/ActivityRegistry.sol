@@ -4,8 +4,6 @@ pragma solidity ^0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-/// @title AI Hub Activity Registry
-/// @notice Canonical on-chain activity log shared by AI Hub modules.
 contract ActivityRegistry is Ownable, Pausable {
     struct Activity {
         uint256 chainId;
@@ -20,6 +18,8 @@ contract ActivityRegistry is Ownable, Pausable {
     mapping(address => mapping(uint256 => Activity)) private _activities;
     mapping(bytes32 => bool) public supportedActivityTypes;
     mapping(address => bool) public reporters;
+    mapping(uint256 => address) private _activityUser;
+    mapping(uint256 => uint256) private _activityIndex;
 
     uint256 public totalActivities;
 
@@ -51,28 +51,25 @@ contract ActivityRegistry is Ownable, Pausable {
 
         uint256 userActivityId = _activityCount[user];
         activityId = totalActivities;
-        _activities[user][userActivityId] = Activity({chainId: block.chainid, activityType: activityType, projectId: projectId, metadataHash: metadataHash, timestamp: uint64(block.timestamp), verified: verified});
+        _activities[user][userActivityId] = Activity(block.chainid, activityType, projectId, metadataHash, uint64(block.timestamp), verified);
+        _activityUser[activityId] = user;
+        _activityIndex[activityId] = userActivityId;
         _activityCount[user] = userActivityId + 1;
         totalActivities = activityId + 1;
         emit ActivityRecorded(activityId, user, block.chainid, activityType, projectId, metadataHash, verified);
     }
 
-    function setActivityVerified(uint256 activityId, address user, bool verified) external onlyOwner {
+    function setActivityVerified(uint256 activityId, bool verified) external onlyOwner {
         require(activityId < totalActivities, "Activity: invalid ID");
-        uint256 count = _activityCount[user];
-        require(count > 0, "Activity: no activities");
-        for (uint256 i = 0; i < count; i++) {
-            if (_activityIdOf(_activities[user][i], user, i) == activityId) {
-                _activities[user][i].verified = verified;
-                emit ActivityStatusChanged(activityId, user, verified);
-                return;
-            }
-        }
-        revert("Activity: not found");
+        address user = _activityUser[activityId];
+        Activity storage activity = _activities[user][_activityIndex[activityId]];
+        activity.verified = verified;
+        emit ActivityStatusChanged(activityId, user, verified);
     }
 
-    function _activityIdOf(Activity memory, address, uint256 index) private pure returns (uint256) {
-        return index;
+    function activityUser(uint256 activityId) external view returns (address) {
+        require(activityId < totalActivities, "Activity: invalid ID");
+        return _activityUser[activityId];
     }
 
     function activityCount(address user) external view returns (uint256) { return _activityCount[user]; }
