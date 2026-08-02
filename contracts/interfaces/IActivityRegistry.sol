@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 interface IActivityRegistry {
     function recordActivity(
         address user,
+        uint256 chainId,
         bytes32 activityType,
         bytes32 projectId,
         bytes32 metadataHash,
