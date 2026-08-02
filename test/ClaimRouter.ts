@@ -10,37 +10,24 @@ describe("ClaimRouter", function () {
     const policy = await ethers.deployContract("RewardPolicyEngine", [owner.address, points.target]);
     const eligibility = await ethers.deployContract("EligibilityEngine", [owner.address]);
     const vault = await ethers.deployContract("RewardVault", [owner.address]);
-    const router = await ethers.deployContract("ClaimRouter", [
-      owner.address,
-      eligibility.target,
-      policy.target,
-      vault.target,
-    ]);
+    const router = await ethers.deployContract("ClaimRouter", [owner.address, eligibility.target, policy.target, vault.target]);
 
     await points.setPointWriter(policy.target, true);
     await vault.setRewardManager(router.target, true);
 
     const policyId = ethers.id("BASE_SWAP_100");
     const activityType = ethers.id("SWAP");
-    const ruleId = policyId;
-
-    await policy.setPolicy(policyId, activityType, 84532, 100n, true, true);
-    await eligibility.setRule(ruleId, 0, 0, 1, 1000n, true, true);
-    await eligibility.initialize(ruleId, user.address);
+    await policy.setPolicy(policyId, activityType, 84532n, 100n, true, true);
+    await eligibility.setRule(policyId, 0, 0, 1, 1000n, true, true);
+    await eligibility.initialize(policyId, user.address);
+    await policy.transferOwnership(router.target);
+    await eligibility.transferOwnership(router.target);
 
     await owner.sendTransaction({ to: vault.target, value: ethers.parseEther("1") });
 
     const claimId = ethers.id("CLAIM_001");
     const before = await ethers.provider.getBalance(user.address);
-
-    await router.claimNative(
-      claimId,
-      policyId,
-      ethers.id("ACTIVITY_001"),
-      user.address,
-      true,
-      ethers.parseEther("0.1"),
-    );
+    await router.claimNative(claimId, policyId, ethers.id("ACTIVITY_001"), user.address, true, ethers.parseEther("0.1"));
 
     const after = await ethers.provider.getBalance(user.address);
     expect(after - before).to.equal(ethers.parseEther("0.1"));
@@ -60,16 +47,16 @@ describe("ClaimRouter", function () {
     await vault.setRewardManager(router.target, true);
 
     const policyId = ethers.id("TEST");
-    await policy.setPolicy(policyId, ethers.id("MINT"), 11155111, 50n, false, true);
+    await policy.setPolicy(policyId, ethers.id("MINT"), 11155111n, 50n, false, true);
     await eligibility.setRule(policyId, 0, 0, 2, 1000n, false, true);
     await eligibility.initialize(policyId, user.address);
+    await policy.transferOwnership(router.target);
+    await eligibility.transferOwnership(router.target);
     await owner.sendTransaction({ to: vault.target, value: 1000n });
 
     const claimId = ethers.id("REPLAY");
     await router.claimNative(claimId, policyId, ethers.id("ACTIVITY"), user.address, false, 100n);
-
-    await expect(
-      router.claimNative(claimId, policyId, ethers.id("ACTIVITY_2"), user.address, false, 100n),
-    ).to.be.revertedWith("Router: claim already executed");
+    await expect(router.claimNative(claimId, policyId, ethers.id("ACTIVITY_2"), user.address, false, 100n))
+      .to.be.revertedWith("Router: claim already executed");
   });
 });
