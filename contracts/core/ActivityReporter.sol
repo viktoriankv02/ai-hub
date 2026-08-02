@@ -4,8 +4,6 @@ pragma solidity ^0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IActivityRegistry} from "../interfaces/IActivityRegistry.sol";
 
-/// @title AI Hub Activity Reporter
-/// @notice Controlled gateway for submitting verified activities from authorized verifiers.
 contract ActivityReporter is Ownable {
     IActivityRegistry public immutable registry;
     mapping(address => bool) public reporters;
@@ -45,7 +43,7 @@ contract ActivityReporter is Ownable {
         require(supportedChains[msg.sender][chainId], "Reporter: unsupported chain");
         require(verified, "Reporter: activity not verified");
 
-        activityId = registry.recordActivity(user, activityType, projectId, metadataHash, true);
+        activityId = registry.recordActivity(user, chainId, activityType, projectId, metadataHash, true);
         emit ActivitySubmitted(msg.sender, user, activityId, chainId);
     }
 }
