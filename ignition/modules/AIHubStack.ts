@@ -18,9 +18,10 @@ export default buildModule("AIHubStack", (m) => {
     verificationRegistry,
   ]);
 
-  // The policy engine is the authorized writer for deterministic activity rewards.
-  // RewardEngine remains deployed as the simpler administrative reward path.
-  m.call(points, "transferOwnership", [policyEngine]);
+  // Multiple modules may award points, while only the owner can revoke them.
+  m.call(points, "setPointWriter", [rewards, true]);
+  m.call(points, "setPointWriter", [policyEngine, true]);
+
   m.call(activityRegistry, "setActivityType", ["0x0000000000000000000000000000000000000000000000000000000000000001", true]);
   m.call(activityRegistry, "setActivityType", ["0x0000000000000000000000000000000000000000000000000000000000000002", true]);
   m.call(activityRegistry, "setActivityType", ["0x0000000000000000000000000000000000000000000000000000000000000003", true]);
