@@ -7,7 +7,8 @@ describe("ActivityReporter + chain adapter", function () {
   it("accepts activity only after adapter verification", async function () {
     const [owner, reporter, user] = await ethers.getSigners();
     const registry = await ethers.deployContract("ActivityRegistry", [owner.address]);
-    const gateway = await ethers.deployContract("ActivityReporter", [owner.address, registry.target]);
+    const chainRegistry = await ethers.deployContract("ChainRegistry", [owner.address]);
+    const gateway = await ethers.deployContract("ActivityReporter", [owner.address, registry.target, chainRegistry.target]);
     const adapter = await ethers.deployContract("EVMChainAdapter", [owner.address, 84532n, ethers.id("EVM")]);
 
     const activityType = ethers.id("SWAP");
@@ -16,9 +17,10 @@ describe("ActivityReporter + chain adapter", function () {
 
     await registry.setActivityType(activityType, true);
     await registry.setReporter(gateway.target, true);
+    await chainRegistry.setAdapterAuthorized(adapter.target, true);
+    await chainRegistry.registerChain(84532n, ethers.id("BASE_SEPOLIA"), ethers.id("EVM"), adapter.target, true, true);
     await gateway.setReporter(reporter.address, true);
     await gateway.setSupportedChain(reporter.address, 84532n, true);
-    await gateway.setChainAdapter(84532n, adapter.target);
 
     await expect(
       gateway.connect(reporter).submitWithAdapter(
