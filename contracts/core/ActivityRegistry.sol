@@ -42,21 +42,27 @@ contract ActivityRegistry is Ownable, Pausable {
         emit ReporterSet(reporter, authorized);
     }
 
-    function recordActivity(address user, bytes32 activityType, bytes32 projectId, bytes32 metadataHash, bool verified)
-        external whenNotPaused returns (uint256 activityId)
-    {
+    function recordActivity(
+        address user,
+        uint256 chainId,
+        bytes32 activityType,
+        bytes32 projectId,
+        bytes32 metadataHash,
+        bool verified
+    ) external whenNotPaused returns (uint256 activityId) {
         require(msg.sender == owner() || reporters[msg.sender], "Activity: unauthorized reporter");
         require(user != address(0), "Activity: zero user");
+        require(chainId != 0, "Activity: invalid chain");
         require(supportedActivityTypes[activityType], "Activity: unsupported type");
 
         uint256 userActivityId = _activityCount[user];
         activityId = totalActivities;
-        _activities[user][userActivityId] = Activity(block.chainid, activityType, projectId, metadataHash, uint64(block.timestamp), verified);
+        _activities[user][userActivityId] = Activity(chainId, activityType, projectId, metadataHash, uint64(block.timestamp), verified);
         _activityUser[activityId] = user;
         _activityIndex[activityId] = userActivityId;
         _activityCount[user] = userActivityId + 1;
         totalActivities = activityId + 1;
-        emit ActivityRecorded(activityId, user, block.chainid, activityType, projectId, metadataHash, verified);
+        emit ActivityRecorded(activityId, user, chainId, activityType, projectId, metadataHash, verified);
     }
 
     function setActivityVerified(uint256 activityId, bool verified) external onlyOwner {
