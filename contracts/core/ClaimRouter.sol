@@ -16,6 +16,15 @@ interface IClaimPolicy {
         bool verifiedOnly,
         bool active
     );
+
+    function claim(
+        bytes32 policyId,
+        address user,
+        bytes32 activityId,
+        bytes32 activityType,
+        uint256 chainId,
+        bool verified
+    ) external;
 }
 
 interface IClaimVault {
@@ -23,8 +32,6 @@ interface IClaimVault {
     function claimERC20(bytes32 claimId, address token, address recipient, uint256 amount) external;
 }
 
-/// @title AI Hub Claim Router
-/// @notice Connects eligibility, reward policy and treasury payout into one claim flow.
 contract ClaimRouter is Ownable, Pausable {
     IClaimEligibility public immutable eligibility;
     IClaimPolicy public immutable policyEngine;
@@ -35,12 +42,7 @@ contract ClaimRouter is Ownable, Pausable {
     event NativeClaimExecuted(bytes32 indexed claimId, bytes32 indexed policyId, address indexed user, uint256 points, uint256 amount);
     event ERC20ClaimExecuted(bytes32 indexed claimId, bytes32 indexed policyId, address indexed user, address token, uint256 points, uint256 amount);
 
-    constructor(
-        address initialOwner,
-        address eligibilityAddress,
-        address policyAddress,
-        address vaultAddress
-    ) Ownable(initialOwner) {
+    constructor(address initialOwner, address eligibilityAddress, address policyAddress, address vaultAddress) Ownable(initialOwner) {
         require(eligibilityAddress != address(0), "Router: zero eligibility");
         require(policyAddress != address(0), "Router: zero policy");
         require(vaultAddress != address(0), "Router: zero vault");
@@ -49,36 +51,25 @@ contract ClaimRouter is Ownable, Pausable {
         rewardVault = IClaimVault(vaultAddress);
     }
 
-    function claimNative(
-        bytes32 claimId,
-        bytes32 policyId,
-        bytes32 activityId,
-        address user,
-        bool verified,
-        uint256 amount
-    ) external onlyOwner whenNotPaused {
+    function claimNative(bytes32 claimId, bytes32 policyId, bytes32 activityId, address user, bool verified, uint256 amount)
+        external onlyOwner whenNotPaused
+    {
         _beginClaim(claimId, user);
         (bytes32 activityType, uint256 chainId, uint256 points, bool verifiedOnly, bool active) = policyEngine.getPolicy(policyId);
         require(active, "Router: inactive policy");
         require(!verifiedOnly || verified, "Router: verification required");
         require(activityId != bytes32(0), "Router: empty activity");
 
+        policyEngine.claim(policyId, user, activityId, activityType, chainId, verified);
         eligibility.consume(policyId, user, points, verified);
         rewardVault.claimNative(claimId, payable(user), amount);
 
         emit NativeClaimExecuted(claimId, policyId, user, points, amount);
-        activityType; chainId;
     }
 
-    function claimERC20(
-        bytes32 claimId,
-        bytes32 policyId,
-        bytes32 activityId,
-        address user,
-        bool verified,
-        address token,
-        uint256 amount
-    ) external onlyOwner whenNotPaused {
+    function claimERC20(bytes32 claimId, bytes32 policyId, bytes32 activityId, address user, bool verified, address token, uint256 amount)
+        external onlyOwner whenNotPaused
+    {
         _beginClaim(claimId, user);
         (bytes32 activityType, uint256 chainId, uint256 points, bool verifiedOnly, bool active) = policyEngine.getPolicy(policyId);
         require(active, "Router: inactive policy");
@@ -86,11 +77,11 @@ contract ClaimRouter is Ownable, Pausable {
         require(activityId != bytes32(0), "Router: empty activity");
         require(token != address(0), "Router: zero token");
 
+        policyEngine.claim(policyId, user, activityId, activityType, chainId, verified);
         eligibility.consume(policyId, user, points, verified);
         rewardVault.claimERC20(claimId, token, user, amount);
 
         emit ERC20ClaimExecuted(claimId, policyId, user, token, points, amount);
-        activityType; chainId;
     }
 
     function pause() external onlyOwner { _pause(); }
