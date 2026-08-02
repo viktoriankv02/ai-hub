@@ -66,7 +66,14 @@ describe("AI Hub full integration", function () {
     const reward = ethers.parseEther("0.1");
     const before = await ethers.provider.getBalance(user.address);
 
-    await router.claimNative(claimId, policyId, ethers.zeroPadValue(ethers.toBeHex(activityId), 32), user.address, true, reward);
+    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+      claimId,
+      policyId,
+      ethers.zeroPadValue(ethers.toBeHex(activityId), 32),
+      user.address,
+      true,
+      reward,
+    );
 
     const after = await ethers.provider.getBalance(user.address);
     expect(after - before).to.equal(reward);
@@ -91,10 +98,24 @@ describe("AI Hub full integration", function () {
     const secondClaim = ethers.id("CLAIM_BASE_003");
     const activityId = ethers.zeroPadValue(ethers.toBeHex(0), 32);
 
-    await router.claimNative(firstClaim, policyId, activityId, user.address, true, ethers.parseEther("0.01"));
+    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+      firstClaim,
+      policyId,
+      activityId,
+      user.address,
+      true,
+      ethers.parseEther("0.01"),
+    );
 
     await expect(
-      router.claimNative(secondClaim, policyId, activityId, user.address, true, ethers.parseEther("0.01")),
+      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+        secondClaim,
+        policyId,
+        activityId,
+        user.address,
+        true,
+        ethers.parseEther("0.01"),
+      ),
     ).to.be.revertedWith("Policy: already claimed");
   });
 
@@ -102,7 +123,7 @@ describe("AI Hub full integration", function () {
     const { user, points, router, policyId } = await deploySystem();
 
     await expect(
-      router.claimNative(
+      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
         ethers.id("CLAIM_UNVERIFIED"),
         policyId,
         ethers.id("UNVERIFIED_ACTIVITY"),
