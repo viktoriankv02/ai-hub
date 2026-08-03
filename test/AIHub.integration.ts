@@ -101,7 +101,6 @@ describe("AI Hub full integration", function () {
     } = await deploySystem();
 
     const userAddress = await user.getAddress();
-    const reporterAddress = await reporter.getAddress();
 
     await (
       await activityReporter.connect(reporter).submit(
@@ -124,11 +123,15 @@ describe("AI Hub full integration", function () {
     const activityId = ethers.id("BASE_ACTIVITY_001");
     const reward = ethers.parseEther("0.1");
     const before = await ethers.provider.getBalance(userAddress);
-    const claimNative = router.getFunction(
-      "claimNative(bytes32,bytes32,bytes32,address,bool,uint256)",
-    );
 
-    await claimNative(claimId, policyId, activityId, userAddress, true, reward);
+    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+      claimId,
+      policyId,
+      activityId,
+      userAddress,
+      true,
+      reward,
+    );
 
     const after = await ethers.provider.getBalance(userAddress);
     expect(after - before).to.equal(reward);
@@ -164,11 +167,8 @@ describe("AI Hub full integration", function () {
     const firstClaim = ethers.id("CLAIM_BASE_002");
     const secondClaim = ethers.id("CLAIM_BASE_003");
     const activityId = ethers.id("BASE_ACTIVITY_002");
-    const claimNative = router.getFunction(
-      "claimNative(bytes32,bytes32,bytes32,address,bool,uint256)",
-    );
 
-    await claimNative(
+    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
       firstClaim,
       policyId,
       activityId,
@@ -178,7 +178,7 @@ describe("AI Hub full integration", function () {
     );
 
     await expect(
-      claimNative(
+      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
         secondClaim,
         policyId,
         activityId,
@@ -192,12 +192,9 @@ describe("AI Hub full integration", function () {
   it("blocks unverified claims before policy consumption", async function () {
     const { user, points, router, policyId } = await deploySystem();
     const userAddress = await user.getAddress();
-    const claimNative = router.getFunction(
-      "claimNative(bytes32,bytes32,bytes32,address,bool,uint256)",
-    );
 
     await expect(
-      claimNative(
+      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
         ethers.id("CLAIM_UNVERIFIED"),
         policyId,
         ethers.id("UNVERIFIED_ACTIVITY"),
