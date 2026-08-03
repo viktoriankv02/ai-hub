@@ -86,8 +86,28 @@ describe("AI Hub full integration", function () {
     };
   }
 
+  async function claimNative(
+    owner: any,
+    router: any,
+    claimId: string,
+    policyId: string,
+    activityId: string,
+    userAddress: string,
+    verified: boolean,
+    amount: bigint,
+  ) {
+    const routerAddress = await router.getAddress();
+    const data = router.interface.encodeFunctionData(
+      "claimNative(bytes32,bytes32,bytes32,address,bool,uint256)",
+      [claimId, policyId, activityId, userAddress, verified, amount],
+    );
+
+    return owner.sendTransaction({ to: routerAddress, data });
+  }
+
   it("runs verified activity -> policy -> eligibility -> points -> native reward", async function () {
     const {
+      owner,
       reporter,
       user,
       points,
@@ -124,14 +144,7 @@ describe("AI Hub full integration", function () {
     const reward = ethers.parseEther("0.1");
     const before = await ethers.provider.getBalance(userAddress);
 
-    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-      claimId,
-      policyId,
-      activityId,
-      userAddress,
-      true,
-      reward,
-    );
+    await (await claimNative(owner, router, claimId, policyId, activityId, userAddress, true, reward)).wait();
 
     const after = await ethers.provider.getBalance(userAddress);
     expect(after - before).to.equal(reward);
@@ -142,6 +155,7 @@ describe("AI Hub full integration", function () {
 
   it("prevents a second claim for the same policy/user", async function () {
     const {
+      owner,
       reporter,
       user,
       router,
@@ -168,33 +182,21 @@ describe("AI Hub full integration", function () {
     const secondClaim = ethers.id("CLAIM_BASE_003");
     const activityId = ethers.id("BASE_ACTIVITY_002");
 
-    await router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-      firstClaim,
-      policyId,
-      activityId,
-      userAddress,
-      true,
-      ethers.parseEther("0.01"),
-    );
+    await (await claimNative(owner, router, firstClaim, policyId, activityId, userAddress, true, ethers.parseEther("0.01"))).wait();
 
     await expect(
-      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
-        secondClaim,
-        policyId,
-        activityId,
-        userAddress,
-        true,
-        ethers.parseEther("0.01"),
-      ),
+      claimNative(owner, router, secondClaim, policyId, activityId, userAddress, true, ethers.parseEther("0.01")),
     ).to.be.revertedWith("Policy: already claimed");
   });
 
   it("blocks unverified claims before policy consumption", async function () {
-    const { user, points, router, policyId } = await deploySystem();
+    const { owner, user, points, router, policyId } = await deploySystem();
     const userAddress = await user.getAddress();
 
     await expect(
-      router["claimNative(bytes32,bytes32,bytes32,address,bool,uint256)"](
+      claimNative(
+        owner,
+        router,
         ethers.id("CLAIM_UNVERIFIED"),
         policyId,
         ethers.id("UNVERIFIED_ACTIVITY"),
