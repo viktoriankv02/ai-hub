@@ -49,49 +49,92 @@ describe("AI Hub full integration", function () {
     const registryAddress = await registry.getAddress();
     console.log("SETUP 7 registry", registryAddress);
 
-    const activityReporter = await ethers.deployContract("ActivityReporter", [ownerAddress, registryAddress]);
+    // ActivityReporter now requires the canonical ChainRegistry as well as ActivityRegistry.
+    const chainRegistry = await ethers.deployContract("ChainRegistry", [ownerAddress]);
+    await chainRegistry.waitForDeployment();
+    const chainRegistryAddress = await chainRegistry.getAddress();
+    console.log("SETUP 8 chain registry", chainRegistryAddress);
+
+    const adapter = await ethers.deployContract("EVMChainAdapter", [
+      ownerAddress,
+      BASE_SEPOLIA,
+      ethers.id("EVM"),
+    ]);
+    await adapter.waitForDeployment();
+    const adapterAddress = await adapter.getAddress();
+    console.log("SETUP 9 adapter", adapterAddress);
+
+    const activityReporter = await ethers.deployContract("ActivityReporter", [
+      ownerAddress,
+      registryAddress,
+      chainRegistryAddress,
+    ]);
     await activityReporter.waitForDeployment();
     const activityReporterAddress = await activityReporter.getAddress();
-    console.log("SETUP 8 reporter", activityReporterAddress);
+    console.log("SETUP 10 reporter", activityReporterAddress);
 
     const activityType = ethers.id("SWAP");
     const projectId = ethers.id("AI_HUB_BASE_TEST");
     const policyId = ethers.id("BASE_SWAP_REWARD");
 
-    console.log("SETUP 9 point writer");
+    await (await chainRegistry.setAdapterAuthorized(adapterAddress, true)).wait();
+    await (
+      await chainRegistry.registerChain(
+        BASE_SEPOLIA,
+        ethers.id("BASE_SEPOLIA"),
+        ethers.id("EVM"),
+        adapterAddress,
+        true,
+        true,
+      )
+    ).wait();
+
     await (await points.setPointWriter(policyAddress, true)).wait();
-    console.log("SETUP 10 reward manager");
     await (await vault.setRewardManager(routerAddress, true)).wait();
 
-    console.log("SETUP 11 registry activity type");
     await (await registry.setActivityType(activityType, true)).wait();
-    console.log("SETUP 12 registry reporter");
     await (await registry.setReporter(activityReporterAddress, true)).wait();
-    console.log("SETUP 13 activity reporter auth");
     await (await activityReporter.setReporter(reporterAddress, true)).wait();
-    console.log("SETUP 14 activity reporter chain");
     await (await activityReporter.setSupportedChain(reporterAddress, BASE_SEPOLIA, true)).wait();
 
-    console.log("SETUP 15 policy");
     await (await policy.setPolicy(policyId, activityType, BASE_SEPOLIA, 100n, true, true)).wait();
-    console.log("SETUP 16 eligibility rule");
     await (await eligibility.setRule(policyId, 0, 0, 1, 1000n, true, true)).wait();
-    console.log("SETUP 17 eligibility init");
     await (await eligibility.initialize(policyId, userAddress)).wait();
 
-    console.log("SETUP 18 transfer policy ownership");
     await (await policy.transferOwnership(routerAddress)).wait();
-    console.log("SETUP 19 transfer eligibility ownership");
     await (await eligibility.transferOwnership(routerAddress)).wait();
 
-    console.log("SETUP 20 fund vault");
     await (await owner.sendTransaction({ to: vaultAddress, value: ethers.parseEther("1") })).wait();
-    console.log("SETUP COMPLETE");
 
-    return { owner, reporter, user, points, policy, eligibility, vault, router, registry, activityReporter, activityType, projectId, policyId };
+    return {
+      owner,
+      reporter,
+      user,
+      points,
+      policy,
+      eligibility,
+      vault,
+      router,
+      registry,
+      chainRegistry,
+      adapter,
+      activityReporter,
+      activityType,
+      projectId,
+      policyId,
+    };
   }
 
-  async function claimNative(owner: any, router: any, claimId: string, policyId: string, activityId: string, userAddress: string, verified: boolean, amount: bigint) {
+  async function claimNative(
+    owner: any,
+    router: any,
+    claimId: string,
+    policyId: string,
+    activityId: string,
+    userAddress: string,
+    verified: boolean,
+    amount: bigint,
+  ) {
     const routerAddress = await router.getAddress();
     const data = router.interface.encodeFunctionData(
       "claimNative(bytes32,bytes32,bytes32,address,bool,uint256)",
@@ -101,19 +144,49 @@ describe("AI Hub full integration", function () {
   }
 
   it("runs verified activity -> policy -> eligibility -> points -> native reward", async function () {
-    const { owner, reporter, user, points, vault, router, registry, activityReporter, activityType, projectId, policyId } = await deploySystem();
+    const {
+      owner,
+      reporter,
+      user,
+      points,
+      vault,
+      router,
+      registry,
+      activityReporter,
+      activityType,
+      projectId,
+      policyId,
+    } = await deploySystem();
+
     const userAddress = await user.getAddress();
-    await (await activityReporter.connect(reporter).submit(userAddress, BASE_SEPOLIA, activityType, projectId, ethers.id("BASE_TX_001"), true)).wait();
+    await (
+      await activityReporter
+        .connect(reporter)
+        .submit(
+          userAddress,
+          BASE_SEPOLIA,
+          activityType,
+          projectId,
+          ethers.id("BASE_TX_001"),
+          true,
+        )
+    ).wait();
+
     expect(await registry.activityCount(userAddress)).to.equal(1n);
     const activity = await registry.getActivity(userAddress, 0);
     expect(activity.chainId).to.equal(BASE_SEPOLIA);
     expect(activity.activityType).to.equal(activityType);
     expect(activity.verified).to.equal(true);
+
     const claimId = ethers.id("CLAIM_BASE_001");
     const activityId = ethers.id("BASE_ACTIVITY_001");
     const reward = ethers.parseEther("0.1");
     const before = await ethers.provider.getBalance(userAddress);
-    await (await claimNative(owner, router, claimId, policyId, activityId, userAddress, true, reward)).wait();
+
+    await (
+      await claimNative(owner, router, claimId, policyId, activityId, userAddress, true, reward)
+    ).wait();
+
     const after = await ethers.provider.getBalance(userAddress);
     expect(after - before).to.equal(reward);
     expect(await points.pointsOf(userAddress)).to.equal(100n);
@@ -122,20 +195,71 @@ describe("AI Hub full integration", function () {
   });
 
   it("prevents a second claim for the same policy/user", async function () {
-    const { owner, reporter, user, router, activityReporter, activityType, projectId, policyId } = await deploySystem();
+    const { owner, reporter, user, router, activityReporter, activityType, projectId, policyId } =
+      await deploySystem();
     const userAddress = await user.getAddress();
-    await (await activityReporter.connect(reporter).submit(userAddress, BASE_SEPOLIA, activityType, projectId, ethers.id("BASE_TX_002"), true)).wait();
+
+    await (
+      await activityReporter
+        .connect(reporter)
+        .submit(
+          userAddress,
+          BASE_SEPOLIA,
+          activityType,
+          projectId,
+          ethers.id("BASE_TX_002"),
+          true,
+        )
+    ).wait();
+
     const firstClaim = ethers.id("CLAIM_BASE_002");
     const secondClaim = ethers.id("CLAIM_BASE_003");
     const activityId = ethers.id("BASE_ACTIVITY_002");
-    await (await claimNative(owner, router, firstClaim, policyId, activityId, userAddress, true, ethers.parseEther("0.01"))).wait();
-    await expect(claimNative(owner, router, secondClaim, policyId, activityId, userAddress, true, ethers.parseEther("0.01"))).to.be.revertedWith("Policy: already claimed");
+
+    await (
+      await claimNative(
+        owner,
+        router,
+        firstClaim,
+        policyId,
+        activityId,
+        userAddress,
+        true,
+        ethers.parseEther("0.01"),
+      )
+    ).wait();
+
+    await expect(
+      claimNative(
+        owner,
+        router,
+        secondClaim,
+        policyId,
+        activityId,
+        userAddress,
+        true,
+        ethers.parseEther("0.01"),
+      ),
+    ).to.be.revertedWith("Policy: already claimed");
   });
 
   it("blocks unverified claims before policy consumption", async function () {
     const { owner, user, points, router, policyId } = await deploySystem();
     const userAddress = await user.getAddress();
-    await expect(claimNative(owner, router, ethers.id("CLAIM_UNVERIFIED"), policyId, ethers.id("UNVERIFIED_ACTIVITY"), userAddress, false, ethers.parseEther("0.01"))).to.be.revertedWith("Router: verification required");
+
+    await expect(
+      claimNative(
+        owner,
+        router,
+        ethers.id("CLAIM_UNVERIFIED"),
+        policyId,
+        ethers.id("UNVERIFIED_ACTIVITY"),
+        userAddress,
+        false,
+        ethers.parseEther("0.01"),
+      ),
+    ).to.be.revertedWith("Router: verification required");
+
     expect(await points.pointsOf(userAddress)).to.equal(0n);
   });
 });
