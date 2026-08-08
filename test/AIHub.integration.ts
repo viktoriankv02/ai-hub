@@ -136,6 +136,8 @@ describe("AI Hub full integration", function () {
       reporter,
       user,
       points,
+      policy,
+      eligibility,
       vault,
       router,
       registry,
