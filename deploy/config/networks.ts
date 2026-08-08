@@ -64,6 +64,30 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     explorerEnv: "POLYGON_AMOY_EXPLORER_URL",
     testnet: true,
   },
+  plasmaTestnet: {
+    key: "plasmaTestnet",
+    name: "Plasma Testnet",
+    chainId: 9746,
+    rpcEnv: "PLASMA_RPC_URL",
+    explorerEnv: "PLASMA_EXPLORER_URL",
+    testnet: true,
+  },
+  arcTestnet: {
+    key: "arcTestnet",
+    name: "Arc Testnet",
+    chainId: 5042002,
+    rpcEnv: "ARC_RPC_URL",
+    explorerEnv: "ARC_EXPLORER_URL",
+    testnet: true,
+  },
+  tempoTestnet: {
+    key: "tempoTestnet",
+    name: "Tempo Testnet (Moderato)",
+    chainId: 42431,
+    rpcEnv: "TEMPO_RPC_URL",
+    explorerEnv: "TEMPO_EXPLORER_URL",
+    testnet: true,
+  },
 };
 
 export function getRpcUrl(key: string): string {
