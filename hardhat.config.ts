@@ -43,5 +43,26 @@ export default defineConfig({
       chainId: 84532,
       accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
+    plasmaTestnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("PLASMA_RPC_URL"),
+      chainId: 9746,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    arcTestnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("ARC_RPC_URL"),
+      chainId: 5042002,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    tempoTestnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("TEMPO_RPC_URL"),
+      chainId: 42431,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
   },
 });
