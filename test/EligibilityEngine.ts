@@ -10,6 +10,7 @@ describe("EligibilityEngine", function () {
     const ruleId = ethers.id("BASE_SWAP");
 
     await engine.setRule(ruleId, 0, 0, 1, 100, true, true);
+    await engine.setClaimExecutor(owner.address, true);
 
     let result = await engine.canConsume(ruleId, user.address, 50n, true);
     expect(result[0]).to.equal(false);
@@ -38,6 +39,7 @@ describe("EligibilityEngine", function () {
 
     await engine.setRule(ruleId, 0, 3600, 10, 1000, false, true);
     await engine.initialize(ruleId, user.address);
+    await engine.setClaimExecutor(owner.address, true);
     await engine.consume(ruleId, user.address, 100, false);
 
     let result = await engine.canConsume(ruleId, user.address, 100n, false);
