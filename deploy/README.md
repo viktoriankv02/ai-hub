@@ -2,7 +2,7 @@
 
 The deployment layer is intentionally testnet-first. Mainnet deployment is disabled until the protocol passes local integration tests, testnet verification, security review, and an explicit governance decision.
 
-## Supported initial EVM testnets
+## Supported EVM testnets
 
 - Ethereum Sepolia — 11155111
 - Base Sepolia — 84532
@@ -11,6 +11,11 @@ The deployment layer is intentionally testnet-first. Mainnet deployment is disab
 - BNB Smart Chain Testnet — 97
 - Avalanche Fuji — 43113
 - Polygon Amoy — 80002
+- Plasma Testnet — 9746
+- Arc Testnet — 5042002
+- Tempo Testnet (Moderato) — 42431
+
+Plasma is an EVM chain using XPL for gas. Arc Testnet uses USDC as the gas currency. Tempo has no native gas token; non-TIP-20 contract calls use pathUSD by default unless a Tempo fee token is selected.
 
 ## Environment
 
@@ -20,6 +25,7 @@ Copy the required variables into a local `.env` file. Never commit private keys 
 DEPLOYER_PRIVATE_KEY=...
 AI_HUB_ADMIN_ADDRESS=...
 AI_HUB_NETWORK=baseSepolia
+
 SEPOLIA_RPC_URL=...
 BASE_SEPOLIA_RPC_URL=...
 ARBITRUM_SEPOLIA_RPC_URL=...
@@ -27,6 +33,13 @@ OPTIMISM_SEPOLIA_RPC_URL=...
 BNB_TESTNET_RPC_URL=...
 AVALANCHE_FUJI_RPC_URL=...
 POLYGON_AMOY_RPC_URL=...
+PLASMA_RPC_URL=https://testnet-rpc.plasma.to
+ARC_RPC_URL=https://rpc.testnet.arc.network
+TEMPO_RPC_URL=https://rpc.moderato.tempo.xyz
+
+PLASMA_EXPLORER_URL=https://testnet.plasmascan.to
+ARC_EXPLORER_URL=https://testnet.arcscan.app
+TEMPO_EXPLORER_URL=https://explore.tempo.xyz
 ```
 
 The deployment scripts refuse targets that are not configured as testnets.
@@ -40,27 +53,51 @@ Run the steps in this order. Each step is designed to be safe to rerun against t
 03_deploy_evm_adapter.ts
 01_configure_core.ts
 02_register_chain.ts
-05_configure_rewards.ts
 04_verify_configuration.ts
 ```
 
-The adapter step owns `ChainRegistry` registration. Core configuration only grants permissions. Reward configuration creates or updates the configured policy while keeping `RewardPolicyEngine` and `EligibilityEngine` owned by the admin; `ClaimRouter` receives an explicit claim-executor permission instead of taking ownership.
+The adapter step owns `ChainRegistry` registration. Core configuration grants permissions and wires the deployed modules together. The verification step checks the resulting on-chain configuration.
 
-Example:
+## Example: Plasma
 
 ```powershell
-$env:AI_HUB_NETWORK="baseSepolia"
-npx hardhat run deploy/00_deploy_core.ts --network baseSepolia
-npx hardhat run deploy/03_deploy_evm_adapter.ts --network baseSepolia
-npx hardhat run deploy/01_configure_core.ts --network baseSepolia
-npx hardhat run deploy/02_register_chain.ts --network baseSepolia
-npx hardhat run deploy/05_configure_rewards.ts --network baseSepolia
-npx hardhat run deploy/04_verify_configuration.ts --network baseSepolia
+$env:AI_HUB_NETWORK="plasmaTestnet"
+npx hardhat run deploy/00_deploy_core.ts --network plasmaTestnet
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network plasmaTestnet
+npx hardhat run deploy/01_configure_core.ts --network plasmaTestnet
+npx hardhat run deploy/02_register_chain.ts --network plasmaTestnet
+npx hardhat run deploy/04_verify_configuration.ts --network plasmaTestnet
 ```
+
+## Example: Arc
+
+```powershell
+$env:AI_HUB_NETWORK="arcTestnet"
+npx hardhat run deploy/00_deploy_core.ts --network arcTestnet
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network arcTestnet
+npx hardhat run deploy/01_configure_core.ts --network arcTestnet
+npx hardhat run deploy/02_register_chain.ts --network arcTestnet
+npx hardhat run deploy/04_verify_configuration.ts --network arcTestnet
+```
+
+Arc Testnet requires testnet USDC for gas; it does not use ETH as the gas currency.
+
+## Example: Tempo
+
+```powershell
+$env:AI_HUB_NETWORK="tempoTestnet"
+npx hardhat run deploy/00_deploy_core.ts --network tempoTestnet
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network tempoTestnet
+npx hardhat run deploy/01_configure_core.ts --network tempoTestnet
+npx hardhat run deploy/02_register_chain.ts --network tempoTestnet
+npx hardhat run deploy/04_verify_configuration.ts --network tempoTestnet
+```
+
+Tempo Testnet provides test stablecoins through `tempo_fundAddress`. Standard EVM tooling is supported, but Tempo-specific transaction features such as explicit fee-token selection are better handled through the Tempo Foundry/SDK tooling.
 
 ## Reward configuration
 
-Optional environment variables:
+Optional environment variables used by the existing reward configuration:
 
 ```text
 AI_HUB_REWARD_ACTIVITY=SWAP
@@ -74,4 +111,4 @@ AI_HUB_REWARD_COOLDOWN=0
 
 ## Expansion model
 
-Once the EVM deployment pipeline is stable, additional networks are added through `deploy/config/networks.ts` rather than hard-coding RPC URLs inside deployment scripts.
+Additional EVM networks are added through `deploy/config/networks.ts` and `hardhat.config.ts`; RPC URLs and credentials remain environment-only.
