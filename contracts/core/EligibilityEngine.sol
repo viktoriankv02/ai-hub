@@ -26,13 +26,21 @@ contract EligibilityEngine is Ownable {
     mapping(bytes32 => Rule) private _rules;
     mapping(bytes32 => mapping(address => UserState)) private _states;
     mapping(address => bool) public blocked;
+    mapping(address => bool) public claimExecutors;
 
+    event ClaimExecutorSet(address indexed executor, bool enabled);
     event RuleSet(bytes32 indexed ruleId, uint64 minIdentityAge, uint64 cooldown, uint32 maxClaims, uint256 maxPointsPerPeriod, bool requireVerified, bool active);
     event UserBlocked(address indexed user, bool blocked);
     event EligibilityInitialized(bytes32 indexed ruleId, address indexed user, uint256 timestamp);
     event RewardConsumed(bytes32 indexed ruleId, address indexed user, uint256 points, uint256 timestamp);
 
     constructor(address initialOwner) Ownable(initialOwner) {}
+
+    function setClaimExecutor(address executor, bool enabled) external onlyOwner {
+        require(executor != address(0), "Eligibility: zero executor");
+        claimExecutors[executor] = enabled;
+        emit ClaimExecutorSet(executor, enabled);
+    }
 
     function setRule(
         bytes32 ruleId,
@@ -106,7 +114,8 @@ contract EligibilityEngine is Ownable {
         address user,
         uint256 points,
         bool verified
-    ) external onlyOwner {
+    ) external {
+        require(claimExecutors[msg.sender], "Eligibility: unauthorized executor");
         (bool eligible, bytes32 reason) = this.canConsume(ruleId, user, points, verified);
         require(eligible, string.concat("Eligibility: ", _reasonText(reason)));
 
