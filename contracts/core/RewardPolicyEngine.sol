@@ -19,7 +19,9 @@ contract RewardPolicyEngine is Ownable {
 
     mapping(bytes32 => Policy) private _policies;
     mapping(bytes32 => mapping(address => bool)) public claimed;
+    mapping(address => bool) public claimExecutors;
 
+    event ClaimExecutorSet(address indexed executor, bool enabled);
     event PolicySet(
         bytes32 indexed policyId,
         bytes32 indexed activityType,
@@ -38,6 +40,12 @@ contract RewardPolicyEngine is Ownable {
     constructor(address initialOwner, address pointsModuleAddress) Ownable(initialOwner) {
         require(pointsModuleAddress != address(0), "Policy: zero points module");
         pointsModule = IPointsModule(pointsModuleAddress);
+    }
+
+    function setClaimExecutor(address executor, bool enabled) external onlyOwner {
+        require(executor != address(0), "Policy: zero executor");
+        claimExecutors[executor] = enabled;
+        emit ClaimExecutorSet(executor, enabled);
     }
 
     function setPolicy(
@@ -84,7 +92,9 @@ contract RewardPolicyEngine is Ownable {
         bytes32 activityType,
         uint256 chainId,
         bool verified
-    ) external onlyOwner {
+    ) external {
+        require(claimExecutors[msg.sender], "Policy: unauthorized executor");
+
         Policy memory policy = _policies[policyId];
         require(policy.active, "Policy: inactive");
         require(user != address(0), "Policy: zero user");
