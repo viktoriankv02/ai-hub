@@ -14,14 +14,14 @@ describe("ClaimRouter", function () {
 
     await points.setPointWriter(policy.target, true);
     await vault.setRewardManager(router.target, true);
+    await policy.setClaimExecutor(router.target, true);
+    await eligibility.setClaimExecutor(router.target, true);
 
     const policyId = ethers.id("BASE_SWAP_100");
     const activityType = ethers.id("SWAP");
     await policy.setPolicy(policyId, activityType, 84532n, 100n, true, true);
     await eligibility.setRule(policyId, 0, 0, 1, 1000n, true, true);
     await eligibility.initialize(policyId, user.address);
-    await policy.transferOwnership(router.target);
-    await eligibility.transferOwnership(router.target);
 
     await owner.sendTransaction({ to: vault.target, value: ethers.parseEther("1") });
 
@@ -33,6 +33,8 @@ describe("ClaimRouter", function () {
     expect(after - before).to.equal(ethers.parseEther("0.1"));
     expect(await router.executed(claimId)).to.equal(true);
     expect(await points.pointsOf(user.address)).to.equal(100n);
+    expect(await policy.owner()).to.equal(owner.address);
+    expect(await eligibility.owner()).to.equal(owner.address);
   });
 
   it("rejects a replayed router claim", async function () {
@@ -45,13 +47,13 @@ describe("ClaimRouter", function () {
 
     await points.setPointWriter(policy.target, true);
     await vault.setRewardManager(router.target, true);
+    await policy.setClaimExecutor(router.target, true);
+    await eligibility.setClaimExecutor(router.target, true);
 
     const policyId = ethers.id("TEST");
     await policy.setPolicy(policyId, ethers.id("MINT"), 11155111n, 50n, false, true);
     await eligibility.setRule(policyId, 0, 0, 2, 1000n, false, true);
     await eligibility.initialize(policyId, user.address);
-    await policy.transferOwnership(router.target);
-    await eligibility.transferOwnership(router.target);
     await owner.sendTransaction({ to: vault.target, value: 1000n });
 
     const claimId = ethers.id("REPLAY");
