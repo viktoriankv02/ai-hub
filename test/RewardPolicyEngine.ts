@@ -10,6 +10,7 @@ describe("RewardPolicyEngine", function () {
     const policy = await ethers.deployContract("RewardPolicyEngine", [owner.address, points.target]);
 
     await points.setPointWriter(policy.target, true);
+    await policy.setClaimExecutor(owner.address, true);
 
     const policyId = ethers.id("BASE_SWAP_100");
     const activityType = ethers.id("SWAP");
@@ -31,6 +32,7 @@ describe("RewardPolicyEngine", function () {
     const points = await ethers.deployContract("PointsModule", [owner.address]);
     const policy = await ethers.deployContract("RewardPolicyEngine", [owner.address, points.target]);
     await points.setPointWriter(policy.target, true);
+    await policy.setClaimExecutor(owner.address, true);
 
     const policyId = ethers.id("ARB_BRIDGE_250");
     const bridge = ethers.id("BRIDGE");
