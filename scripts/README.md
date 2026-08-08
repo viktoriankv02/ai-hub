@@ -1,4 +1,6 @@
-# AI Hub local validation
+# AI Hub validation
+
+## Local validation
 
 Recommended order:
 
@@ -8,8 +10,21 @@ npx hardhat test
 npx hardhat run scripts/local-smoke.ts
 ```
 
-The smoke test validates the complete local path:
+The local smoke test validates:
 
 `ChainRegistry -> EVMChainAdapter -> ActivityReporter -> ActivityRegistry`
 
-Before deploying to a public testnet, run the deployment/configuration scripts with a dedicated test wallet and verify the resulting addresses and permissions.
+## Public testnet validation
+
+After deployment, run the real end-to-end smoke test against the selected testnet:
+
+```powershell
+$env:AI_HUB_NETWORK="baseSepolia"
+npx hardhat run scripts/testnet-smoke.ts --network baseSepolia
+```
+
+The testnet smoke test creates a unique policy/activity/claim, records a verified activity through the EVM adapter, awards points, and executes a native reward through `ClaimRouter` and `RewardVault`.
+
+The smoke test uses the deployer/admin as the trusted verifier and reporter by default. Set `AI_HUB_SMOKE_USER_ADDRESS` if the reward recipient should be another address.
+
+Use a dedicated test wallet and fund its testnet balance before running the public testnet flow.
