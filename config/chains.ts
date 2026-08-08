@@ -16,8 +16,9 @@ export interface ChainConfig {
  * environment variables and are never committed to the repository.
  */
 export const chains: ChainConfig[] = [
-  { key: "plasma", name: "Plasma", kind: "evm", enabled: false, rpcEnv: "PLASMA_RPC_URL" },
-  { key: "tempo", name: "Tempo", kind: "evm", enabled: false, rpcEnv: "TEMPO_RPC_URL" },
+  { key: "plasma", name: "Plasma", kind: "evm", enabled: true, chainId: 9746, rpcEnv: "PLASMA_RPC_URL", explorerUrl: "https://testnet.plasmascan.to" },
+  { key: "arcTestnet", name: "Arc Testnet", kind: "evm", enabled: true, chainId: 5042002, rpcEnv: "ARC_RPC_URL", explorerUrl: "https://testnet.arcscan.app", notes: "USDC is the native gas currency on Arc Testnet." },
+  { key: "tempoTestnet", name: "Tempo Testnet (Moderato)", kind: "evm", enabled: true, chainId: 42431, rpcEnv: "TEMPO_RPC_URL", explorerUrl: "https://explore.tempo.xyz", notes: "Tempo has no native gas token; transaction fees are paid in TIP-20 stablecoins." },
   { key: "stable", name: "Stable", kind: "evm", enabled: false, rpcEnv: "STABLE_RPC_URL" },
   { key: "simplechain", name: "SimpleChain", kind: "evm", enabled: false, rpcEnv: "SIMPLECHAIN_RPC_URL" },
   { key: "dacInception", name: "DAC Inception", kind: "evm", enabled: false, rpcEnv: "DAC_INCEPTION_RPC_URL" },
