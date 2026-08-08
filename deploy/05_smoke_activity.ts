@@ -19,8 +19,7 @@ if (!userAddress) throw new Error("Missing AI_HUB_USER_ADDRESS");
 const activityTypeName = process.env.AI_HUB_ACTIVITY_TYPE ?? "SWAP";
 const activityType = ethers.id(activityTypeName);
 const projectId = ethers.id(process.env.AI_HUB_PROJECT_ID ?? "AI_HUB_TESTNET");
-const txHash = ethers.id(process.env.AI_HUB_TEST_TX_ID ?? `${target}-${Date.now()}`);
-const verificationData = process.env.AI_HUB_VERIFICATION_DATA ?? ethers.hexlify(ethers.toUtf8Bytes("AI_HUB_SMOKE"));
+const metadataHash = ethers.id(process.env.AI_HUB_TEST_TX_ID ?? `${target}-${Date.now()}`);
 
 const reporter = await ethers.getContractAt("ActivityReporter", deployment.contracts.ActivityReporter);
 const registry = await ethers.getContractAt("ActivityRegistry", deployment.contracts.ActivityRegistry);
@@ -38,13 +37,14 @@ const tx = await connectedReporter.submit(
   config.chainId,
   activityType,
   projectId,
-  txHash,
+  metadataHash,
   true,
-  verificationData,
 );
 await tx.wait();
 
 const count = await registry.activityCount(userAddress);
+if (count === 0n) throw new Error("Smoke activity was not recorded");
+
 const activity = await registry.getActivity(userAddress, count - 1n);
 
 if (!activity.verified) throw new Error("Smoke activity was not recorded as verified");
