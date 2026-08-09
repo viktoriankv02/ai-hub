@@ -4,6 +4,7 @@ The deployment layer is intentionally testnet-first. Mainnet deployment is disab
 
 ## Supported EVM testnets
 
+- Ink Sepolia — 763373
 - Ethereum Sepolia — 11155111
 - Base Sepolia — 84532
 - Arbitrum Sepolia — 421614
@@ -15,7 +16,7 @@ The deployment layer is intentionally testnet-first. Mainnet deployment is disab
 - Arc Testnet — 5042002
 - Tempo Testnet (Moderato) — 42431
 
-Plasma is an EVM chain using XPL for gas. Arc Testnet uses USDC as the gas currency. Tempo has no native gas token; non-TIP-20 contract calls use pathUSD by default unless a Tempo fee token is selected.
+Ink Sepolia uses ETH for gas. Plasma is an EVM chain using XPL for gas. Arc Testnet uses USDC as the gas currency. Tempo has no native gas token; non-TIP-20 contract calls use pathUSD by default unless a Tempo fee token is selected.
 
 ## Environment
 
@@ -24,10 +25,11 @@ Copy the required variables into a local `.env` file. Never commit private keys 
 ```text
 DEPLOYER_PRIVATE_KEY=...
 AI_HUB_ADMIN_ADDRESS=...
-AI_HUB_NETWORK=baseSepolia
+AI_HUB_NETWORK=inkSepolia
 
 SEPOLIA_RPC_URL=...
 BASE_SEPOLIA_RPC_URL=...
+INK_SEPOLIA_RPC_URL=https://rpc-gel-sepolia.inkonchain.com
 ARBITRUM_SEPOLIA_RPC_URL=...
 OPTIMISM_SEPOLIA_RPC_URL=...
 BNB_TESTNET_RPC_URL=...
@@ -37,6 +39,7 @@ PLASMA_RPC_URL=https://testnet-rpc.plasma.to
 ARC_RPC_URL=https://rpc.testnet.arc.network
 TEMPO_RPC_URL=https://rpc.moderato.tempo.xyz
 
+INK_SEPOLIA_EXPLORER_URL=https://explorer-sepolia.inkonchain.com
 PLASMA_EXPLORER_URL=https://testnet.plasmascan.to
 ARC_EXPLORER_URL=https://testnet.arcscan.app
 TEMPO_EXPLORER_URL=https://explore.tempo.xyz
@@ -57,6 +60,18 @@ Run the steps in this order. Each step is designed to be safe to rerun against t
 ```
 
 The adapter step owns `ChainRegistry` registration. Core configuration grants permissions and wires the deployed modules together. The verification step checks the resulting on-chain configuration.
+
+## Example: Ink Sepolia
+
+```powershell
+$env:AI_HUB_NETWORK="inkSepolia"
+npx hardhat run deploy/00_deploy_core.ts --network inkSepolia
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network inkSepolia
+npx hardhat run deploy/01_configure_core.ts --network inkSepolia
+npx hardhat run deploy/04_verify_configuration.ts --network inkSepolia
+```
+
+Ink's official testnet RPC is `https://rpc-gel-sepolia.inkonchain.com`, chain ID `763373`, and the testnet explorer is `https://explorer-sepolia.inkonchain.com`.
 
 ## Example: Plasma
 
