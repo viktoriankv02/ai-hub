@@ -4,3 +4,4 @@ export * from "./catalog.js";
 export * from "./action-planner.js";
 export * from "./execution-memory.js";
 export * from "./evidence-engine.js";
+export * from "./opportunity-monitor.js";
