@@ -16,6 +16,7 @@ export interface ChainConfig {
  * environment variables and are never committed to the repository.
  */
 export const chains: ChainConfig[] = [
+  { key: "inkSepolia", name: "Ink Sepolia", kind: "evm", enabled: true, chainId: 763373, rpcEnv: "INK_SEPOLIA_RPC_URL", explorerUrl: "https://explorer-sepolia.inkonchain.com", notes: "Ink OP Stack testnet; ETH is the gas currency." },
   { key: "plasma", name: "Plasma", kind: "evm", enabled: true, chainId: 9746, rpcEnv: "PLASMA_RPC_URL", explorerUrl: "https://testnet.plasmascan.to" },
   { key: "arcTestnet", name: "Arc Testnet", kind: "evm", enabled: true, chainId: 5042002, rpcEnv: "ARC_RPC_URL", explorerUrl: "https://testnet.arcscan.app", notes: "USDC is the native gas currency on Arc Testnet." },
   { key: "tempoTestnet", name: "Tempo Testnet (Moderato)", kind: "evm", enabled: true, chainId: 42431, rpcEnv: "TEMPO_RPC_URL", explorerUrl: "https://explore.tempo.xyz", notes: "Tempo has no native gas token; transaction fees are paid in TIP-20 stablecoins." },
@@ -33,7 +34,7 @@ export const chains: ChainConfig[] = [
   { key: "sepolia", name: "Ethereum Sepolia", kind: "evm", enabled: true, chainId: 11155111, rpcEnv: "SEPOLIA_RPC_URL" },
   { key: "baseSepolia", name: "Base Sepolia", kind: "evm", enabled: true, chainId: 84532, rpcEnv: "BASE_SEPOLIA_RPC_URL" },
   { key: "robinhood", name: "Robinhood", kind: "evm", enabled: false, rpcEnv: "ROBINHOOD_RPC_URL" },
-  { key: "ink", name: "Ink", kind: "evm", enabled: false, rpcEnv: "INK_RPC_URL" },
+  { key: "ink", name: "Ink", kind: "evm", enabled: false, chainId: 57073, rpcEnv: "INK_RPC_URL", explorerUrl: "https://explorer.inkonchain.com", notes: "Ink mainnet. Mainnet deployment remains disabled in the testnet-first deployment layer." },
   { key: "arbitrum", name: "Arbitrum", kind: "evm", enabled: false, rpcEnv: "ARBITRUM_RPC_URL" },
   { key: "bnb", name: "BNB Smart Chain", kind: "evm", enabled: false, rpcEnv: "BNB_RPC_URL" },
   { key: "opbnb", name: "opBNB", kind: "evm", enabled: false, rpcEnv: "OPBNB_RPC_URL" },
