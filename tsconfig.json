@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node", "mocha"]
   },
-  "include": ["hardhat.config.ts", "config/**/*.ts", "ignition/**/*.ts", "test/**/*.ts"]
+  "include": ["hardhat.config.ts", "config/**/*.ts", "agents/**/*.ts", "ignition/**/*.ts", "test/**/*.ts"]
 }
