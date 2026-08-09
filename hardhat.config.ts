@@ -43,6 +43,13 @@ export default defineConfig({
       chainId: 84532,
       accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
+    inkSepolia: {
+      type: "http",
+      chainType: "op",
+      url: configVariable("INK_SEPOLIA_RPC_URL"),
+      chainId: 763373,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
     plasmaTestnet: {
       type: "http",
       chainType: "l1",
