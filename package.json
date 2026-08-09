@@ -9,7 +9,8 @@
     "test:solidity": "hardhat test solidity",
     "test:mocha": "hardhat test mocha",
     "compile": "hardhat compile",
-    "preflight": "tsx scripts/testnet-preflight.ts"
+    "preflight": "tsx scripts/testnet-preflight.ts",
+    "drop-hunter": "tsx scripts/drop-hunter-report.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
