@@ -24,6 +24,14 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     explorerEnv: "BASE_SEPOLIA_EXPLORER_URL",
     testnet: true,
   },
+  inkSepolia: {
+    key: "inkSepolia",
+    name: "Ink Sepolia",
+    chainId: 763373,
+    rpcEnv: "INK_SEPOLIA_RPC_URL",
+    explorerEnv: "INK_SEPOLIA_EXPLORER_URL",
+    testnet: true,
+  },
   arbitrumSepolia: {
     key: "arbitrumSepolia",
     name: "Arbitrum Sepolia",
