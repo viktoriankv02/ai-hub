@@ -45,7 +45,7 @@ if (!adapterAddress) {
 }
 
 const chainRegistry = await ethers.getContractAt("ChainRegistry", deployment.contracts.ChainRegistry);
-if (!(await chainRegistry.authorizedAdapters(adapterAddress))) {
+if (!(await chainRegistry.adapterAuthorized(adapterAddress))) {
   await (await chainRegistry.setAdapterAuthorized(adapterAddress, true)).wait();
 }
 
