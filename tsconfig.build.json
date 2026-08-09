@@ -7,9 +7,11 @@
     "hardhat.config.ts",
     "config/**/*.ts",
     "agents/**/*.ts",
-    "deploy/**/*.ts",
-    "ignition/**/*.ts",
-    "scripts/**/*.ts"
+    "ignition/**/*.ts"
   ],
-  "exclude": ["test/**/*.ts"]
+  "exclude": [
+    "test/**/*.ts",
+    "deploy/**/*.ts",
+    "scripts/**/*.ts"
+  ]
 }
