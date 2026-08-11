@@ -12,6 +12,7 @@
     "compile": "hardhat compile",
     "preflight": "tsx scripts/testnet-preflight.ts",
     "drop-hunter": "tsx scripts/drop-hunter-report.ts",
+    "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
     "drop-hunter:daemon": "tsx scripts/drop-hunter-daemon.ts"
   },
   "devDependencies": {
