@@ -4,11 +4,14 @@ import { PRIORITY_OPPORTUNITIES, StaticOpportunitySource, createDropHunterRuntim
 
 const intervalMs = parsePositiveNumber(process.env.DROP_HUNTER_INTERVAL_MS ?? "60000");
 const stateFile = resolve(process.env.DROP_HUNTER_STATE_FILE ?? "./.data/drop-hunter/scheduler.json");
+const executionFile = resolve(process.env.DROP_HUNTER_EXECUTION_FILE ?? "./.data/drop-hunter/executions.json");
 await mkdir(dirname(stateFile), { recursive: true });
+await mkdir(dirname(executionFile), { recursive: true });
 
 const source = new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES);
-const runtime = createDropHunterRuntime([source], {
+const runtime = await createDropHunterRuntime([source], {
   stateFile,
+  executionFile,
   scheduler: {
     intervalMs,
     now: () => new Date().toISOString(),
@@ -29,7 +32,7 @@ const shutdown = () => {
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
-console.log(`[drop-hunter] starting interval=${intervalMs}ms state=${stateFile}`);
+console.log(`[drop-hunter] starting interval=${intervalMs}ms state=${stateFile} executions=${executionFile}`);
 await runtime.start(true);
 
 function parsePositiveNumber(value: string): number {
