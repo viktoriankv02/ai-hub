@@ -1,0 +1,3 @@
+export interface DropHunterSchedulerState { version: 1; totalTicks: number; successfulTicks: number; failedTicks: number; consecutiveFailures: number; lastStartedAt?: string; lastCompletedAt?: string; lastErrorAt?: string; lastCycle?: { timestamp: string; cycleCount: number; failedSourceCount: number }; }
+export interface DropHunterSchedulerStateStore { load(): Promise<DropHunterSchedulerState | undefined>; save(state: DropHunterSchedulerState): Promise<void>; }
+export function emptyDropHunterSchedulerState(): DropHunterSchedulerState { return { version: 1, totalTicks: 0, successfulTicks: 0, failedTicks: 0, consecutiveFailures: 0 }; }
