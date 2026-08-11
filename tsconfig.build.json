@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "hardhat.config.ts",
+    "config/**/*.ts",
+    "agents/**/*.ts",
+    "ignition/**/*.ts"
+  ],
+  "exclude": [
+    "test",
+    "node_modules"
+  ]
+}
