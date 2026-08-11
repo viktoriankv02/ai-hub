@@ -28,6 +28,7 @@ export interface SchedulerCycle {
 export class DropHunterScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
+  private initialized = false;
   private stateValue: DropHunterSchedulerState = emptyDropHunterSchedulerState();
 
   constructor(
@@ -42,19 +43,33 @@ export class DropHunterScheduler {
 
   get active(): boolean { return this.timer !== undefined; }
   get runningTick(): boolean { return this.running; }
-  get state(): DropHunterSchedulerState { return { ...this.stateValue, lastCycle: this.stateValue.lastCycle && { ...this.stateValue.lastCycle } }; }
+  get ready(): boolean { return this.initialized; }
+  get state(): DropHunterSchedulerState {
+    return {
+      ...this.stateValue,
+      lastCycle: this.stateValue.lastCycle && { ...this.stateValue.lastCycle },
+    };
+  }
 
   async loadState(): Promise<DropHunterSchedulerState> {
+    if (this.initialized) return this.state;
     const loaded = await this.options.stateStore?.load();
     if (loaded) this.stateValue = loaded;
+    this.initialized = true;
     return this.state;
   }
 
   async tick(): Promise<SchedulerCycle> {
     if (this.running) throw new Error("scheduler tick already running");
+    if (!this.initialized) await this.loadState();
+
     this.running = true;
     const timestamp = this.options.now?.() ?? new Date().toISOString();
-    this.stateValue = { ...this.stateValue, lastStartedAt: timestamp, totalTicks: this.stateValue.totalTicks + 1 };
+    this.stateValue = {
+      ...this.stateValue,
+      lastStartedAt: timestamp,
+      totalTicks: this.stateValue.totalTicks + 1,
+    };
     await this.persist();
     try {
       const result = await this.service.scanResilient({
@@ -69,7 +84,11 @@ export class DropHunterScheduler {
       this.stateValue = {
         ...this.stateValue,
         lastCompletedAt: timestamp,
-        lastCycle: { timestamp, cycleCount: cycle.cycles.length, failedSourceCount: cycle.failedSources.length },
+        lastCycle: {
+          timestamp,
+          cycleCount: cycle.cycles.length,
+          failedSourceCount: cycle.failedSources.length,
+        },
         successfulTicks: this.stateValue.successfulTicks + 1,
         consecutiveFailures: 0,
       };
@@ -89,6 +108,21 @@ export class DropHunterScheduler {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Lifecycle-safe async startup. State is restored before the first tick or
+   * timer is created, preventing a restart from racing persisted state load.
+   */
+  async startAsync(runImmediately = true): Promise<void> {
+    await this.loadState();
+    if (this.timer) return;
+
+    if (runImmediately) await this.tick();
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      void this.tick().catch(() => undefined);
+    }, this.options.intervalMs);
   }
 
   start(runImmediately = true): void {
