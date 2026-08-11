@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json --noEmit",
+    "build:all": "tsc --noEmit",
     "test": "hardhat test",
     "test:solidity": "hardhat test solidity",
     "test:mocha": "hardhat test mocha",
