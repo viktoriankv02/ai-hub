@@ -1,107 +1,12 @@
 import type { ProjectOpportunity, ScoredOpportunity } from "./types.js";
 import { planOpportunity, type PlannedAction, type UserExecutionProfile } from "./action-planner.js";
-import { recordExecutionEvent, type ExecutionEvent } from "./execution-memory.js";
-import { recordEvidence, type EvidenceRecord } from "./evidence-engine.js";
-import { observeOpportunity, type OpportunityObservation } from "./opportunity-monitor.js";
-
-export interface DropHunterEngineState {
-  opportunity: ScoredOpportunity;
-  observations: OpportunityObservation[];
-  executionEvents: ExecutionEvent[];
-  evidence: EvidenceRecord[];
-  actions: PlannedAction[];
-}
-
-export interface EngineExecutionResult {
-  state: DropHunterEngineState;
-  event: ExecutionEvent;
-  evidence?: EvidenceRecord;
-}
-
-export interface EngineObservationInput {
-  observedAt: number;
-  rewardConfirmed?: boolean;
-  rewardEvidence?: string;
-  confidence?: number;
-  notes?: string;
-}
-
-export function createEngineState(
-  opportunity: ScoredOpportunity,
-  profile: UserExecutionProfile = {},
-): DropHunterEngineState {
-  return {
-    opportunity,
-    observations: [],
-    executionEvents: [],
-    evidence: [],
-    actions: planOpportunity(opportunity, profile),
-  };
-}
-
-export function observeEngine(
-  state: DropHunterEngineState,
-  input: EngineObservationInput,
-): DropHunterEngineState {
-  const result = observeOpportunity(state.opportunity, input);
-  return {
-    ...state,
-    opportunity: result.opportunity,
-    observations: [...state.observations, result.observation],
-  };
-}
-
-export function refreshPlan(
-  state: DropHunterEngineState,
-  profile: UserExecutionProfile = {},
-): DropHunterEngineState {
-  return { ...state, actions: planOpportunity(state.opportunity, profile) };
-}
-
-export function executeAction(
-  state: DropHunterEngineState,
-  actionId: string,
-  outcome: ExecutionEvent["outcome"],
-  executedAt: number,
-): EngineExecutionResult {
-  const event = recordExecutionEvent({ actionId, outcome, executedAt });
-  const executionEvents = [...state.executionEvents, event];
-  const actions = state.actions.map((action) =>
-    action.id === actionId && outcome === "success"
-      ? { ...action, completed: true }
-      : action,
-  );
-
-  return {
-    state: { ...state, executionEvents, actions },
-    event,
-  };
-}
-
-export function applyOnChainEvidence(
-  state: DropHunterEngineState,
-  actionId: string,
-  verified: boolean,
-  recordedAt: number,
-  txHash?: string,
-): DropHunterEngineState {
-  const evidence = recordEvidence({
-    actionId,
-    status: verified ? "on-chain-proof" : "unverified",
-    verified,
-    recordedAt,
-    txHash,
-  });
-  return { ...state, evidence: [...state.evidence, evidence] };
-}
-
-export function runObservation(
-  opportunity: ScoredOpportunity | ProjectOpportunity,
-  input: EngineObservationInput,
-  profile: UserExecutionProfile = {},
-): DropHunterEngineState {
-  const scored = "score" in opportunity
-    ? opportunity
-    : ({ ...opportunity, score: 0 } as ScoredOpportunity);
-  return refreshPlan(observeEngine(createEngineState(scored, profile), input), profile);
-}
+import { learnExecutionProfile, recordExecution, type ExecutionEvent, type LearnedExecutionProfile } from "./execution-memory.js";
+import { recordEvidence, summarizeEvidence, verifiedEvidence, type ActionEvidence, type EvidenceSummary } from "./evidence-engine.js";
+import { OpportunityMonitor, type MonitorUpdate, type OpportunityObservation, type OpportunitySnapshot, type RewardEvidenceStatus } from "./opportunity-monitor.js";
+import { scoreOpportunity } from "./scorer.js";
+export interface DropHunterCycleResult { opportunity:ScoredOpportunity; snapshot:OpportunitySnapshot; monitor:MonitorUpdate; actions:PlannedAction[]; executionProfile:LearnedExecutionProfile; evidence:ActionEvidence[]; verifiedEvidence:ActionEvidence[]; evidenceSummaries:EvidenceSummary[]; }
+export interface DropHunterObserveOptions { observedAt:string; lifecycle?:OpportunityObservation["lifecycle"]; confidence?:OpportunityObservation["confidence"]; rewardEvidence?:RewardEvidenceStatus; notes?:string[]; }
+const unique=<T,>(values:T[])=>[...new Set(values)];
+export class DropHunterEngine{private readonly monitor:OpportunityMonitor;private executions:ExecutionEvent[]=[];private evidence:ActionEvidence[]=[];constructor(monitor=new OpportunityMonitor()){this.monitor=monitor;}
+observe(opportunity:ProjectOpportunity,options:DropHunterObserveOptions,profile:UserExecutionProfile={}):DropHunterCycleResult{const scored=scoreOpportunity(opportunity);const learned=learnExecutionProfile(this.executions);const effectiveProfile:UserExecutionProfile={...learned,...profile,completedActionIds:unique([...(learned.completedActionIds??[]),...(profile.completedActionIds??[])])};const actions=planOpportunity(scored,effectiveProfile);const summaries=actions.map(action=>summarizeEvidence(action.id,this.evidence));const verified=verifiedEvidence(this.evidence);const monitorUpdate=this.monitor.observe({opportunityId:opportunity.id,name:opportunity.name,score:scored.score,observedAt:options.observedAt,lifecycle:options.lifecycle??"active",confidence:options.confidence??"medium",rewardEvidence:options.rewardEvidence??"unconfirmed",sourceCount:opportunity.sources.length,recommendedActionIds:actions.map(a=>a.id),chainKeys:opportunity.chainId===undefined?[]:[String(opportunity.chainId)],notes:options.notes});return{opportunity:scored,snapshot:monitorUpdate.snapshot,monitor:monitorUpdate,actions,executionProfile:learnExecutionProfile(this.executions),evidence:this.evidence.map(i=>({...i})),verifiedEvidence:verified.map(i=>({...i})),evidenceSummaries:summaries};}
+recordExecution(event:ExecutionEvent){this.executions=recordExecution(this.executions,event);return this.executions.map(i=>({...i}));}recordEvidence(item:ActionEvidence){this.evidence=recordEvidence(this.evidence,item);return this.evidence.map(i=>({...i}));}executionProfile(){return learnExecutionProfile(this.executions);}evidenceFor(actionId?:string){const values=actionId?this.evidence.filter(i=>i.actionId===actionId):this.evidence;return values.map(i=>({...i}));}monitorSnapshot(id:string){return this.monitor.snapshot(id);}actionable(){return this.monitor.actionable();}refreshStale(now:string){return this.monitor.refreshStale(now);}}
