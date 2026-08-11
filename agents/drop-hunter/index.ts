@@ -17,5 +17,7 @@ export * from "./execution-store.js";
 export * from "./transaction-monitor.js";
 export * from "./evm-execution-adapter.js";
 export * from "./evm-runtime.js";
+export * from "./file-scheduler-store.js";
+export * from "./runtime.js";
 export * from "./service.js";
 export * from "./scheduler.js";
