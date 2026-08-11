@@ -95,7 +95,16 @@ describe("Drop Hunter scheduler", function () {
 
     const scheduler = new DropHunterScheduler(service, { profile: {} }, { intervalMs: 1000 });
     const first = scheduler.tick();
-    await expect(scheduler.tick()).to.be.rejectedWith("already running");
+
+    let error: unknown;
+    try {
+      await scheduler.tick();
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).to.be.instanceOf(Error);
+    expect((error as Error).message).to.include("already running");
     await first;
   });
 });

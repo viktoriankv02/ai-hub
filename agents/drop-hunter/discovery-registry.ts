@@ -1,10 +1,178 @@
 import type { ProjectOpportunity } from "./types.js";
 import type { AsyncOpportunitySource, OpportunitySource } from "./opportunity-source.js";
-export type DiscoverySource=OpportunitySource|AsyncOpportunitySource;
-export interface DiscoverySourceHealth{sourceId:string;sourceName:string;consecutiveFailures:number;totalFailures:number;totalSuccesses:number;lastSuccessAt?:string;lastFailureAt?:string;lastError?:string;disabled:boolean;}
-export interface DiscoveryBatch{opportunities:ProjectOpportunity[];successfulSources:string[];failedSources:Array<{sourceId:string;error:string}>;timestamp:string;}
-export interface DiscoveryRegistryOptions{maxConsecutiveFailures?:number;}
-export class OpportunityDiscoveryRegistry{private readonly health=new Map<string,DiscoverySourceHealth>();private readonly maxConsecutiveFailures:number;constructor(private readonly sources:DiscoverySource[]=[],options:DiscoveryRegistryOptions={}){this.maxConsecutiveFailures=options.maxConsecutiveFailures??3;if(!Number.isInteger(this.maxConsecutiveFailures)||this.maxConsecutiveFailures<1)throw new Error("maxConsecutiveFailures must be a positive integer");for(const source of sources)this.ensureHealth(source);}add(source:DiscoverySource){if(this.sources.some(i=>i.id===source.id))throw new Error(`Opportunity source ${source.id} is already registered`);this.sources.push(source);this.ensureHealth(source);}remove(id:string){const i=this.sources.findIndex(s=>s.id===id);if(i<0)return false;this.sources.splice(i,1);return true;}enable(id:string){const h=this.health.get(id);if(!h)return false;h.disabled=false;h.consecutiveFailures=0;return true;}disable(id:string){const h=this.health.get(id);if(!h)return false;h.disabled=true;return true;}status(id:string){const v=this.health.get(id);return v?{...v}:undefined;}statuses(){return[...this.health.values()].map(v=>({...v}));}async discover(timestamp=new Date().toISOString()){const active=this.sources.filter(s=>!this.health.get(s.id)?.disabled);const settled=await Promise.allSettled(active.map(s=>s.discover()));const successfulSources:string[]=[];const failedSources:Array<{sourceId:string;error:string}>=[];const batches:ProjectOpportunity[][]=[];settled.forEach((r,i)=>{const source=active[i];if(r.status==="fulfilled"){this.markSuccess(source,timestamp);successfulSources.push(source.id);batches.push(r.value);}else{const error=normalizeError(r.reason);this.markFailure(source,timestamp,error);failedSources.push({sourceId:source.id,error});}});return{opportunities:mergeBatches(batches),successfulSources,failedSources,timestamp};}private ensureHealth(source:DiscoverySource){const existing=this.health.get(source.id);if(existing)return existing;const value={sourceId:source.id,sourceName:source.name,consecutiveFailures:0,totalFailures:0,totalSuccesses:0,disabled:false};this.health.set(source.id,value);return value;}private markSuccess(source:DiscoverySource,t:string){const h=this.ensureHealth(source);h.consecutiveFailures=0;h.totalSuccesses++;h.lastSuccessAt=t;h.lastError=undefined;}private markFailure(source:DiscoverySource,t:string,error:string){const h=this.ensureHealth(source);h.consecutiveFailures++;h.totalFailures++;h.lastFailureAt=t;h.lastError=error;if(h.consecutiveFailures>=this.maxConsecutiveFailures)h.disabled=true;}}
-function mergeBatches(batches:ProjectOpportunity[][]){const byId=new Map<string,ProjectOpportunity>();for(const batch of batches)for(const opportunity of batch){const existing=byId.get(opportunity.id);if(!existing){byId.set(opportunity.id,cloneOpportunity(opportunity));continue;}byId.set(opportunity.id,{...existing,priority:Math.max(existing.priority,opportunity.priority),signals:{...existing.signals,...opportunity.signals},sources:[...new Set([...existing.sources,...opportunity.sources])],actions:[...new Set([...existing.actions,...opportunity.actions])],notes:opportunity.notes??existing.notes});}return[...byId.values()];}
-function cloneOpportunity(o:ProjectOpportunity):ProjectOpportunity{return{...o,signals:{...o.signals},sources:[...o.sources],actions:[...o.actions]};}
-function normalizeError(e:unknown){return e instanceof Error?e.message:typeof e==="string"?e:"Unknown opportunity source failure";}
+
+export type DiscoverySource = OpportunitySource | AsyncOpportunitySource;
+
+export interface DiscoverySourceHealth {
+  sourceId: string;
+  sourceName: string;
+  consecutiveFailures: number;
+  totalFailures: number;
+  totalSuccesses: number;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastError?: string;
+  disabled: boolean;
+}
+
+export interface DiscoveryBatch {
+  opportunities: ProjectOpportunity[];
+  successfulSources: string[];
+  failedSources: Array<{ sourceId: string; error: string }>;
+  timestamp: string;
+}
+
+export interface DiscoveryRegistryOptions {
+  maxConsecutiveFailures?: number;
+}
+
+export class OpportunityDiscoveryRegistry {
+  private readonly health = new Map<string, DiscoverySourceHealth>();
+  private readonly maxConsecutiveFailures: number;
+
+  constructor(
+    private readonly sources: DiscoverySource[] = [],
+    options: DiscoveryRegistryOptions = {},
+  ) {
+    this.maxConsecutiveFailures = options.maxConsecutiveFailures ?? 3;
+    if (!Number.isInteger(this.maxConsecutiveFailures) || this.maxConsecutiveFailures < 1) {
+      throw new Error("maxConsecutiveFailures must be a positive integer");
+    }
+    for (const source of sources) this.ensureHealth(source);
+  }
+
+  add(source: DiscoverySource) {
+    if (this.sources.some((item) => item.id === source.id)) {
+      throw new Error(`Opportunity source ${source.id} is already registered`);
+    }
+    this.sources.push(source);
+    this.ensureHealth(source);
+  }
+
+  remove(id: string) {
+    const index = this.sources.findIndex((source) => source.id === id);
+    if (index < 0) return false;
+    this.sources.splice(index, 1);
+    return true;
+  }
+
+  enable(id: string) {
+    const health = this.health.get(id);
+    if (!health) return false;
+    health.disabled = false;
+    health.consecutiveFailures = 0;
+    return true;
+  }
+
+  disable(id: string) {
+    const health = this.health.get(id);
+    if (!health) return false;
+    health.disabled = true;
+    return true;
+  }
+
+  status(id: string) {
+    const value = this.health.get(id);
+    return value ? { ...value } : undefined;
+  }
+
+  statuses() {
+    return [...this.health.values()].map((value) => ({ ...value }));
+  }
+
+  async discover(timestamp = new Date().toISOString()) {
+    const active = this.sources.filter((source) => !this.health.get(source.id)?.disabled);
+    const settled = await Promise.allSettled(active.map((source) => source.discover()));
+    const successfulSources: string[] = [];
+    const failedSources: Array<{ sourceId: string; error: string }> = [];
+    const batches: ProjectOpportunity[][] = [];
+
+    settled.forEach((result, index) => {
+      const source = active[index];
+      if (result.status === "fulfilled") {
+        this.markSuccess(source, timestamp);
+        successfulSources.push(source.id);
+        batches.push(result.value);
+      } else {
+        const error = normalizeError(result.reason);
+        this.markFailure(source, timestamp, error);
+        failedSources.push({ sourceId: source.id, error });
+      }
+    });
+
+    return {
+      opportunities: mergeBatches(batches),
+      successfulSources,
+      failedSources,
+      timestamp,
+    };
+  }
+
+  private ensureHealth(source: DiscoverySource): DiscoverySourceHealth {
+    const existing = this.health.get(source.id);
+    if (existing) return existing;
+
+    const value: DiscoverySourceHealth = {
+      sourceId: source.id,
+      sourceName: source.name,
+      consecutiveFailures: 0,
+      totalFailures: 0,
+      totalSuccesses: 0,
+      disabled: false,
+    };
+    this.health.set(source.id, value);
+    return value;
+  }
+
+  private markSuccess(source: DiscoverySource, timestamp: string) {
+    const health = this.ensureHealth(source);
+    health.consecutiveFailures = 0;
+    health.totalSuccesses++;
+    health.lastSuccessAt = timestamp;
+    health.lastError = undefined;
+  }
+
+  private markFailure(source: DiscoverySource, timestamp: string, error: string) {
+    const health = this.ensureHealth(source);
+    health.consecutiveFailures++;
+    health.totalFailures++;
+    health.lastFailureAt = timestamp;
+    health.lastError = error;
+    if (health.consecutiveFailures >= this.maxConsecutiveFailures) health.disabled = true;
+  }
+}
+
+function mergeBatches(batches: ProjectOpportunity[][]) {
+  const byId = new Map<string, ProjectOpportunity>();
+  for (const batch of batches) {
+    for (const opportunity of batch) {
+      const existing = byId.get(opportunity.id);
+      if (!existing) {
+        byId.set(opportunity.id, cloneOpportunity(opportunity));
+        continue;
+      }
+      byId.set(opportunity.id, {
+        ...existing,
+        priority: Math.max(existing.priority, opportunity.priority),
+        signals: { ...existing.signals, ...opportunity.signals },
+        sources: [...new Set([...existing.sources, ...opportunity.sources])],
+        actions: [...new Set([...existing.actions, ...opportunity.actions])],
+        notes: opportunity.notes ?? existing.notes,
+      });
+    }
+  }
+  return [...byId.values()];
+}
+
+function cloneOpportunity(opportunity: ProjectOpportunity): ProjectOpportunity {
+  return {
+    ...opportunity,
+    signals: { ...opportunity.signals },
+    sources: [...opportunity.sources],
+    actions: [...opportunity.actions],
+  };
+}
+
+function normalizeError(error: unknown) {
+  return error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown opportunity source failure";
+}

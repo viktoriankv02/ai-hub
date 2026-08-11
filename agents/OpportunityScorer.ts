@@ -29,8 +29,11 @@ const WEIGHTS: Record<keyof OpportunitySignal, number> = {
   liveBuilderProgram: 15,
   fundedTeam: 12,
   recentLaunch: 8,
-  mainnetLive: 10,
-  testnetLive: 6,
+  // Mainnet and testnet are lifecycle alternatives. Each represents the
+  // full lifecycle contribution so either live stage can reach the same
+  // maximum score for an otherwise equally strong opportunity.
+  mainnetLive: 16,
+  testnetLive: 16,
   aiAgentAlignment: 12,
   defiAlignment: 8,
   developerProgram: 12,
