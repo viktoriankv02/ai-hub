@@ -11,7 +11,8 @@
     "test:mocha": "hardhat test mocha",
     "compile": "hardhat compile",
     "preflight": "tsx scripts/testnet-preflight.ts",
-    "drop-hunter": "tsx scripts/drop-hunter-report.ts"
+    "drop-hunter": "tsx scripts/drop-hunter-report.ts",
+    "drop-hunter:daemon": "tsx scripts/drop-hunter-daemon.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
