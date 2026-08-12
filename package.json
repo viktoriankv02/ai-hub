@@ -17,7 +17,10 @@
     "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts",
     "ai-jobs:worker": "tsx scripts/ai-job-worker.ts",
     "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts",
-    "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts"
+    "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts",
+    "ai-runtime:deploy": "hardhat run deploy/06_deploy_ai_runtime.ts",
+    "ai-runtime:configure": "hardhat run deploy/07_configure_ai_runtime.ts",
+    "ai-completion:configure": "hardhat run scripts/configure-ai-completion.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
@@ -29,6 +32,7 @@
     "@types/node": "^22.20.1",
     "chai": "^6.2.2",
     "chai-as-promised": "^8.0.2",
+    "@types/node": "^22.20.1",
     "ethers": "^6.17.0",
     "hardhat": "^3.11.1",
     "mocha": "^11.7.6",
