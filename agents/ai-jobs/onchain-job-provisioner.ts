@@ -36,13 +36,6 @@ function assertJobId(value: bigint): bigint {
   return value;
 }
 
-/**
- * Bridges an off-chain AIJobRecord into AIAgentEngine.
- *
- * The operation is deliberately idempotent: the persistent binding store is
- * checked before a transaction is sent. This prevents duplicate funded jobs
- * when a worker retries after losing a response.
- */
 export class OnchainJobProvisioner {
   private readonly engine: Contract;
   private readonly options: OnchainJobProvisionerOptions;
@@ -51,7 +44,7 @@ export class OnchainJobProvisioner {
     if (!options.engineAddress) throw new Error("engineAddress is required");
     this.options = {
       tokenDecimals: 18,
-      autoAssign: true,
+      autoAssign: false,
       ...options,
     };
     this.engine = new Contract(options.engineAddress, ENGINE_ABI, options.signer);
