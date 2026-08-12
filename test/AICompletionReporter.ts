@@ -3,7 +3,7 @@ import { network } from "hardhat";
 
 const { ethers } = await network.connect();
 
-const CHAIN_ID = 763373n;
+const CHAIN_ID = 31337n;
 const ACTIVITY_TYPE = ethers.id("AI_JOB_COMPLETED");
 const PROJECT_ID = ethers.id("AI_HUB_JOB_PIPELINE");
 
