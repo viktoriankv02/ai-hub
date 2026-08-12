@@ -19,20 +19,9 @@ interface IAIJobEngineAdapter {
 }
 
 interface IAIAgentRuntimeAdapter {
-    function getAgent(uint256 agentId) external view returns (
-        uint256 id,
-        address owner,
-        string memory name,
-        string memory endpoint,
-        string memory metadataURI,
-        string memory version,
-        uint256 createdAt,
-        uint256 updatedAt,
-        uint256 heartbeatAt,
-        uint8 status,
-        bool verified,
-        bool exists
-    );
+    function agentOwner(uint256 agentId) external view returns (address);
+    function isAgentVerified(uint256 agentId) external view returns (bool);
+    function agentExists(uint256 agentId) external view returns (bool);
 }
 
 interface IActivityRegistryAdapter {
@@ -125,8 +114,9 @@ contract AIJobActivityAdapter is Ownable {
 
         if (id != jobId || !assigned || !completed || resultHash == bytes32(0)) revert InvalidJob();
 
-        (, address beneficiary, , , , , , , , , bool verified, bool exists) = runtime.getAgent(agentId);
-        if (!exists || !verified || beneficiary == address(0)) revert InvalidAgent();
+        if (!runtime.agentExists(agentId) || !runtime.isAgentVerified(agentId)) revert InvalidAgent();
+        address beneficiary = runtime.agentOwner(agentId);
+        if (beneficiary == address(0)) revert InvalidAgent();
 
         bytes32 finalMetadataHash = metadataHash == bytes32(0)
             ? keccak256(abi.encode(jobId, resultHash))
