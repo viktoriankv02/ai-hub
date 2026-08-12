@@ -123,9 +123,10 @@ export class AIJobHttpApi {
     });
   }
 
-  listen(options: AIJobHttpServerOptions = {}): ReturnType<ReturnType<typeof createServer>["listen"]> {
+  listen(options: AIJobHttpServerOptions = {}): ReturnType<typeof createServer> {
     const server = this.createServer();
-    return server.listen(options.port ?? 8787, options.host ?? "127.0.0.1");
+    server.listen(options.port ?? 8787, options.host ?? "127.0.0.1");
+    return server;
   }
 
   private authorized(req: IncomingMessage): boolean {
