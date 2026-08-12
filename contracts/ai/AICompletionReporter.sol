@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 interface IAIAgentEngineCompletion {
     struct AIJob {
         uint256 id;
@@ -31,17 +33,19 @@ interface IActivityRegistryCompletion {
 }
 
 /// @title AICompletionReporter
-/// @notice Atomic bridge from a verified off-chain completion into the AI job
-///         engine and canonical ActivityRegistry.
-/// @dev Authorization is delegated to the two canonical registries. The caller
-///      must be an AIAgentEngine completion reporter and this contract itself
-///      must be an ActivityRegistry reporter.
-contract AICompletionReporter {
+/// @notice Atomic bridge from a trusted execution caller into the AI job engine
+///         and canonical ActivityRegistry.
+/// @dev The bridge is deliberately permissioned. The owner can rotate the
+///      execution caller without changing the AIAgentEngine reporter or the
+///      ActivityRegistry reporter authorization.
+contract AICompletionReporter is Ownable {
     IAIAgentEngineCompletion public immutable engine;
     IActivityRegistryCompletion public immutable activityRegistry;
 
+    mapping(address => bool) public authorizedCallers;
     mapping(bytes32 => bool) public submittedCompletions;
 
+    event AuthorizedCallerSet(address indexed caller, bool enabled);
     event CompletionReported(
         uint256 indexed jobId,
         uint256 indexed agentId,
@@ -55,12 +59,28 @@ contract AICompletionReporter {
     error JobAlreadyCompleted();
     error CompletionAlreadySubmitted();
     error EmptyResultHash();
+    error UnauthorizedCaller();
 
-    constructor(address engineAddress, address activityRegistryAddress) {
+    constructor(address initialOwner, address engineAddress, address activityRegistryAddress)
+        Ownable(initialOwner)
+    {
         require(engineAddress != address(0), "Reporter: zero engine");
         require(activityRegistryAddress != address(0), "Reporter: zero registry");
         engine = IAIAgentEngineCompletion(engineAddress);
         activityRegistry = IActivityRegistryCompletion(activityRegistryAddress);
+    }
+
+    modifier onlyAuthorizedCaller() {
+        if (msg.sender != owner() && !authorizedCallers[msg.sender]) {
+            revert UnauthorizedCaller();
+        }
+        _;
+    }
+
+    function setAuthorizedCaller(address caller, bool enabled) external onlyOwner {
+        require(caller != address(0), "Reporter: zero caller");
+        authorizedCallers[caller] = enabled;
+        emit AuthorizedCallerSet(caller, enabled);
     }
 
     function submitVerifiedCompletion(
@@ -70,7 +90,7 @@ contract AICompletionReporter {
         bytes32 projectId,
         bytes32 metadataHash,
         bytes32 completionId
-    ) external returns (uint256 activityId) {
+    ) external onlyAuthorizedCaller returns (uint256 activityId) {
         if (resultHash == bytes32(0)) revert EmptyResultHash();
         if (completionId == bytes32(0) || submittedCompletions[completionId]) {
             revert CompletionAlreadySubmitted();
