@@ -99,7 +99,7 @@ describe("OnchainJobProvisioner", function () {
 
     const job = { ...queuedJob(), id: "job_provision_assign" };
     const reward = ethers.parseEther("25");
-    const token = await ethers.getContractAt("MockRewardToken", await (await engine.rewardToken()));
+    const token = await ethers.getContractAt("MockRewardToken", await engine.rewardToken());
     await (await token.transfer(await owner.getAddress(), reward)).wait();
     await (await token.connect(owner).approve(await engine.getAddress(), reward)).wait();
 
@@ -120,8 +120,12 @@ describe("OnchainJobProvisioner", function () {
       autoAssign: false,
     });
 
-    await expect(
-      provisioner.provision({ ...queuedJob(), id: "job_zero_reward", reward: "0" }),
-    ).to.be.rejectedWith("job.reward must be positive");
+    let message = "";
+    try {
+      await provisioner.provision({ ...queuedJob(), id: "job_zero_reward", reward: "0" });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).to.equal("job.reward must be positive");
   });
 });
