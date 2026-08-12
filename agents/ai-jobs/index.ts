@@ -14,3 +14,4 @@ export * from "./providers/index.js";
 export * from "./completion-attestation.js";
 export * from "./completion-bridge.js";
 export * from "./evm-completion-sink.js";
+export * from "./onchain-job-bindings.js";
