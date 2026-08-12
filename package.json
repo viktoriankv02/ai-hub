@@ -16,7 +16,8 @@
     "ai-jobs:server": "tsx scripts/ai-job-server.ts",
     "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts",
     "ai-jobs:worker": "tsx scripts/ai-job-worker.ts",
-    "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts"
+    "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts",
+    "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
