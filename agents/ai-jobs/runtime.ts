@@ -1,4 +1,4 @@
-import { DryRunAIExecutor, type AIJobExecutor } from "./executor.js";
+import { AIProviderJobExecutor, DryRunAIExecutor, type AIJobExecutor } from "./executor.js";
 import { OpenAICompatibleProvider } from "./providers/openai-compatible.js";
 
 export type AIJobExecutorMode = "dry-run" | "openai-compatible";
@@ -39,7 +39,7 @@ export function createAIJobExecutor(options: AIJobRuntimeOptions = {}): AIJobExe
   if (!apiKey?.trim()) throw new Error("AI_PROVIDER_API_KEY is required for openai-compatible executor");
   if (!model?.trim()) throw new Error("AI_PROVIDER_MODEL is required for openai-compatible executor");
 
-  return new OpenAICompatibleProvider({
+  const provider = new OpenAICompatibleProvider({
     apiKey,
     model,
     baseUrl: options.baseUrl ?? process.env.AI_PROVIDER_BASE_URL,
@@ -47,5 +47,7 @@ export function createAIJobExecutor(options: AIJobRuntimeOptions = {}): AIJobExe
     temperature: options.temperature ?? numberFromEnv(process.env.AI_PROVIDER_TEMPERATURE),
     maxTokens: options.maxTokens ?? numberFromEnv(process.env.AI_PROVIDER_MAX_TOKENS),
     timeoutMs: options.timeoutMs ?? numberFromEnv(process.env.AI_PROVIDER_TIMEOUT_MS),
-  }) as unknown as AIJobExecutor;
+  });
+
+  return new AIProviderJobExecutor(provider);
 }
