@@ -17,16 +17,6 @@ export interface OnchainCompletionCoordinatorResult {
   onchainJobId: bigint;
 }
 
-/**
- * Coordinates the full off-chain -> on-chain completion boundary.
- *
- * The normal lifecycle is:
- *   queued job -> provision funded on-chain job -> execute -> complete locally
- *   -> sign completion attestation -> submit through EVM sink.
- *
- * It intentionally refuses to attest a job unless the job record is already
- * completed, so an execution result cannot be accidentally treated as proof.
- */
 export class OnchainCompletionCoordinator {
   constructor(private readonly options: OnchainCompletionCoordinatorOptions) {}
 
@@ -45,20 +35,19 @@ export class OnchainCompletionCoordinator {
       throw new Error("completed job must have completedAt");
     }
 
+    const provisioning = await this.options.provisioner.provision(job);
     const attestation = await createCompletionAttestation(job, this.options.attestor);
     const transactionId = await this.options.sink.submit(attestation);
-    const onchainJobId = await this.options.provisioner.provision(job);
 
     return {
       attestationSigner: attestation.signer,
       transactionId,
       offchainJobId: job.id,
-      onchainJobId: onchainJobId.onchainJobId,
+      onchainJobId: provisioning.onchainJobId,
     };
   }
 
   async provisionAndSubmit(job: AIJobRecord): Promise<OnchainCompletionCoordinatorResult> {
-    await this.options.provisioner.provision(job);
     return this.attestAndSubmit(job);
   }
 }
