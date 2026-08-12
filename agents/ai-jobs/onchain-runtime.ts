@@ -8,6 +8,7 @@ import { OnchainJobProvisioner } from "./onchain-job-provisioner.js";
 export interface EVMOnchainRuntimeOptions {
   rpcUrl: string;
   privateKey: string;
+  assignmentPrivateKey?: string;
   engineAddress: string;
   rewardTokenAddress: string;
   completionReporterAddress: string;
@@ -18,54 +19,30 @@ export interface EVMOnchainRuntimeOptions {
   metadataHash?: string;
   agentIdMap?: Record<string, string>;
 }
-
-export interface EVMOnchainRuntime {
-  provider: JsonRpcProvider;
-  signer: Wallet;
-  provisioner: OnchainJobProvisioner;
-  coordinator: OnchainCompletionCoordinator;
-}
-
-function required(value: string | undefined, name: string): string {
-  if (!value?.trim()) throw new Error(`${name} is required`);
-  return value.trim();
-}
-
-function parseAgentMap(raw?: string): Record<string, string> {
-  if (!raw?.trim()) return {};
-  const parsed = JSON.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("AI_AGENT_ID_MAP_JSON must be a JSON object");
-  }
-  return parsed as Record<string, string>;
-}
+export interface EVMOnchainRuntime { provider: JsonRpcProvider; signer: Wallet; assignmentSigner: Wallet; provisioner: OnchainJobProvisioner; coordinator: OnchainCompletionCoordinator; }
+function required(value: string | undefined, name: string): string { if (!value?.trim()) throw new Error(`${name} is required`); return value.trim(); }
 
 export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMOnchainRuntime {
   const rpcUrl = required(options.rpcUrl, "rpcUrl");
   const privateKey = required(options.privateKey, "privateKey");
+  const provider = new JsonRpcProvider(rpcUrl);
+  const signer = new Wallet(privateKey, provider);
+  const assignmentSigner = new Wallet(options.assignmentPrivateKey?.trim() || privateKey, provider);
   const engineAddress = required(options.engineAddress, "engineAddress");
   const rewardTokenAddress = required(options.rewardTokenAddress, "rewardTokenAddress");
   const completionReporterAddress = required(options.completionReporterAddress, "completionReporterAddress");
-  const provider = new JsonRpcProvider(rpcUrl);
-  const signer = new Wallet(privateKey, provider);
   const agentMap = options.agentIdMap ?? {};
-  const bindings = new JsonOnchainJobBindingStore(
-    resolve(options.bindingStorePath ?? "./data/onchain-job-bindings.json"),
-  );
+  const bindings = new JsonOnchainJobBindingStore(resolve(options.bindingStorePath ?? "./data/onchain-job-bindings.json"));
 
   const resolveAgentId = async (agentId: string): Promise<bigint> => {
     const mapped = agentMap[agentId] ?? agentId;
-    try {
-      const value = BigInt(mapped);
-      if (value > 0n) return value;
-    } catch {
-      // Fall through to a descriptive error.
-    }
+    try { const value = BigInt(mapped); if (value > 0n) return value; } catch {}
     throw new Error(`cannot resolve off-chain agentId '${agentId}' to a positive on-chain agent id`);
   };
 
   const provisioner = new OnchainJobProvisioner({
     signer,
+    assignmentSigner,
     engineAddress,
     rewardTokenAddress,
     bindings,
@@ -81,12 +58,6 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
     metadataHash: options.metadataHash,
     resolveOnchainJobId: (offchainJobId) => provisioner.resolveOnchainJobId(offchainJobId),
   });
-
-  const coordinator = new OnchainCompletionCoordinator({
-    provisioner,
-    sink,
-    attestationSigner: signer,
-  });
-
-  return { provider, signer, provisioner, coordinator };
+  const coordinator = new OnchainCompletionCoordinator({ provisioner, sink, attestationSigner: signer });
+  return { provider, signer, assignmentSigner, provisioner, coordinator };
 }
