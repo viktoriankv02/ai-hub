@@ -17,4 +17,5 @@ export * from "./evm-completion-sink.js";
 export * from "./onchain-job-bindings.js";
 export * from "./onchain-job-provisioner.js";
 export * from "./onchain-completion-coordinator.js";
+export * from "./onchain-reward-settler.js";
 export * from "./onchain-runtime.js";
