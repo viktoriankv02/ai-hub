@@ -3,7 +3,7 @@
 The AI job runtime has two layers:
 
 1. **Off-chain execution** — `AIJobOrchestrator`, persistent store, runner, scheduler and provider executor.
-2. **On-chain settlement** — `OnchainJobProvisioner`, `AICompletionReporter` and `ActivityRegistry`.
+2. **On-chain settlement** — `OnchainJobProvisioner`, `AICompletionReporter`, `ActivityRegistry` and optional `OnchainRewardSettler`.
 
 ## Lifecycle
 
@@ -39,8 +39,12 @@ AICompletionReporter
   - AIAgentEngine.completeJob()
   - ActivityRegistry.recordActivity()
         |
-        v
-RewardPolicyEngine / Eligibility / Points / Reward
+        +--------------------+
+        |                    |
+        v                    v
+RewardPolicyEngine      AIAgentEngine.payReward()
+/ Eligibility /         optional auto-settlement
+Points / Reward
 ```
 
 ## Local commands
@@ -74,6 +78,10 @@ Required variables:
 - `AI_COMPLETION_CALLER_ADDRESS`
 
 `AI_COMPLETION_CALLER_ADDRESS` is the EVM signer used by the off-chain completion runtime. It must be authorized in `AICompletionReporter`. The reporter contract must also be authorized in `AIAgentEngine`, and the reporter must be authorized in `ActivityRegistry`.
+
+`AI_JOB_ASSIGNMENT_PRIVATE_KEY` can be separate from the funding signer because `assignJob()` is owner-only. `AI_JOB_PAYOUT_PRIVATE_KEY` can also be separate because `payReward()` is payout-manager-only.
+
+Set `AI_JOB_AUTO_SETTLE_REWARD=true` only after the payout signer has been authorized with `AIAgentEngine.setPayoutManager(...)`.
 
 ## HTTP API
 
