@@ -1,7 +1,6 @@
 import { expect } from "chai";
 import { Wallet } from "ethers";
 import { OnchainCompletionCoordinator } from "../agents/ai-jobs/onchain-completion-coordinator.js";
-import { MemoryOnchainJobBindingStore } from "../agents/ai-jobs/onchain-job-bindings.js";
 import { OnchainJobProvisioner } from "../agents/ai-jobs/onchain-job-provisioner.js";
 import type { CompletionAttestation } from "../agents/ai-jobs/completion-bridge.js";
 import type { AIJobRecord } from "../agents/ai-jobs/types.js";
@@ -70,7 +69,7 @@ describe("OnchainCompletionCoordinator", function () {
     expect(submitted[0].resultHash).to.equal(job.resultHash);
   });
 
-  it("does not require a second provisioning implementation in provisionAndSubmit", async function () {
+  it("uses the same provision-and-submit lifecycle without duplicate provisioning", async function () {
     const attestor = Wallet.createRandom();
     const sink = {
       submit: async () => "0xcoordinator_tx_2",
@@ -100,5 +99,3 @@ async function expectRejection(promise: Promise<unknown>, message: string): Prom
   }
   expect(actual).to.equal(message);
 }
-
-void MemoryOnchainJobBindingStore;
