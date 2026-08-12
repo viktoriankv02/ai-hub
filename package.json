@@ -11,7 +11,8 @@
     "compile": "hardhat compile",
     "preflight": "tsx scripts/testnet-preflight.ts",
     "drop-hunter": "tsx scripts/drop-hunter-report.ts",
-    "drop-hunter:once": "tsx scripts/drop-hunter-once.ts"
+    "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
+    "ai-jobs:plan": "tsx scripts/ai-job-plan-once.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
