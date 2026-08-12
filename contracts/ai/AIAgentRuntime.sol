@@ -128,13 +128,27 @@ contract AIAgentRuntime is Ownable {
         emit AgentMetadataUpdated(agentId);
     }
 
-    function getAgent(uint256 agentId) external view returns (Agent memory) {
-        if (!_agents[agentId].exists) revert AgentNotFound();
-        return _agents[agentId];
-    }
-
     function ownerAgents(address owner) external view returns (uint256[] memory) {
         return _ownerAgents[owner];
+    }
+
+    function agentOwner(uint256 agentId) external view returns (address) {
+        if (!_agents[agentId].exists) revert AgentNotFound();
+        return _agents[agentId].owner;
+    }
+
+    function isAgentVerified(uint256 agentId) external view returns (bool) {
+        if (!_agents[agentId].exists) revert AgentNotFound();
+        return _agents[agentId].verified;
+    }
+
+    function agentExists(uint256 agentId) external view returns (bool) {
+        return _agents[agentId].exists;
+    }
+
+    function agentStatus(uint256 agentId) external view returns (AgentStatus) {
+        if (!_agents[agentId].exists) revert AgentNotFound();
+        return _agents[agentId].status;
     }
 
     function canExecute(uint256 agentId) external view returns (bool) {
