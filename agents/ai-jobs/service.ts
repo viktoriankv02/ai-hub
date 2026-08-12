@@ -11,7 +11,7 @@ export class AIJobService {
 
   constructor(
     private readonly orchestrator: AIJobOrchestrator,
-    executor: AIJobExecutor,
+    private readonly executor: AIJobExecutor,
     options: AIJobServiceOptions = {},
   ) {
     this.runner = new AIJobRunner(orchestrator, executor, options);
@@ -30,7 +30,7 @@ export class AIJobService {
   }
 
   async run(id: string): Promise<AIJobRecord> {
-    const result = await this.orchestrator.run(id, this.runnerExecutor());
+    const result = await this.orchestrator.run(id, this.executor);
     return result.job;
   }
 
@@ -45,12 +45,4 @@ export class AIJobService {
   async drain() {
     return this.runner.drain();
   }
-
-  private runnerExecutor(): AIJobExecutor {
-    // The runner owns the executor already. This method is intentionally
-    // overridden by the constructor wiring below through the private field.
-    return this.executor;
-  }
-
-  private readonly executor: AIJobExecutor = undefined as never;
 }
