@@ -32,12 +32,6 @@ interface IActivityRegistryCompletion {
     ) external returns (uint256 activityId);
 }
 
-/// @title AICompletionReporter
-/// @notice Atomic bridge from a trusted execution caller into the AI job engine
-///         and canonical ActivityRegistry.
-/// @dev The bridge is deliberately permissioned. The owner can rotate the
-///      execution caller without changing the AIAgentEngine reporter or the
-///      ActivityRegistry reporter authorization.
 contract AICompletionReporter is Ownable {
     IAIAgentEngineCompletion public immutable engine;
     IActivityRegistryCompletion public immutable activityRegistry;
@@ -59,7 +53,6 @@ contract AICompletionReporter is Ownable {
     error JobAlreadyCompleted();
     error CompletionAlreadySubmitted();
     error EmptyResultHash();
-    error UnauthorizedCaller();
 
     constructor(address initialOwner, address engineAddress, address activityRegistryAddress)
         Ownable(initialOwner)
@@ -72,7 +65,7 @@ contract AICompletionReporter is Ownable {
 
     modifier onlyAuthorizedCaller() {
         if (msg.sender != owner() && !authorizedCallers[msg.sender]) {
-            revert UnauthorizedCaller();
+            revert OwnableUnauthorizedAccount(msg.sender);
         }
         _;
     }
