@@ -41,6 +41,7 @@ describe("AI agent job pipeline", function () {
     await (await registry.setReporter(await adapter.getAddress(), true)).wait();
     await (await engine.setCompletionReporter(await reporter.getAddress(), true)).wait();
     await (await engine.setPayoutManager(await owner.getAddress(), true)).wait();
+    await (await adapter.setReporter(await reporter.getAddress(), true)).wait();
 
     return { owner, developer, reporter, token, runtime, engine, registry, adapter };
   }
@@ -105,12 +106,12 @@ describe("AI agent job pipeline", function () {
     await (await runtime.connect(developer).startAgent(1)).wait();
 
     const reward = ethers.parseEther("10");
+    await (await token.transfer(developerAddress, reward)).wait();
     await (await token.connect(developer).approve(await engine.getAddress(), reward)).wait();
     await (await engine.connect(developer).createJob(1, ethers.id("TASK_002"), reward)).wait();
     await (await engine.connect(owner).assignJob(1)).wait();
     await (await engine.connect(reporter).completeJob(1, ethers.id("RESULT_002"))).wait();
 
-    await (await adapter.connect(reporter).setReporter(await reporter.getAddress(), true)).wait();
     const metadataHash = ethers.id("JOB_METADATA_002");
     await (await adapter.connect(reporter).reportCompletedJob(1, metadataHash)).wait();
 
