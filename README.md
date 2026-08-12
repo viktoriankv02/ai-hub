@@ -18,6 +18,7 @@ AI Hub is a multi-chain smart-contract infrastructure project designed to provid
 - Off-chain AI job orchestration, persistence, retry and batching
 - Dependency-free local HTTP control plane for AI jobs
 - Persistent AI job worker scheduler with restart-safe state
+- Vendor-neutral OpenAI-compatible AI provider adapter
 
 ### AI agent execution pipeline
 
@@ -86,7 +87,9 @@ The first implementation lives under `agents/ai-jobs/`:
 - `scheduler.ts` — persistent interval worker with overlap protection and lifecycle counters.
 - `json-store.ts` — local durable job store with a versioned file format.
 - `json-scheduler-store.ts` — durable scheduler state store with atomic replacement writes.
-- `executor.ts` — provider boundary plus deterministic dry-run executor.
+- `executor.ts` — provider boundary plus deterministic dry-run executor and result hashing.
+- `runtime.ts` — selects the safe dry-run executor or a configured real provider.
+- `providers/openai-compatible.ts` — dependency-free adapter for OpenAI-compatible `/chat/completions` APIs.
 - `service.ts` — application service boundary for queue operations.
 - `http-api.ts` — local HTTP control plane.
 - `store.ts` — in-memory implementation for tests.
@@ -118,11 +121,12 @@ POST /jobs/:id/cancel
 POST /jobs/drain
 ```
 
-The server uses the durable JSON store at `./data/ai-jobs.json` and the deterministic `DryRunAIExecutor` by default. It does **not** sign wallets or send blockchain transactions.
+The server uses the durable JSON store at `./data/ai-jobs.json`. The executor is `dry-run` by default. It can now use a real OpenAI-compatible provider without changing the HTTP API.
 
 Optional environment variables:
 
 ```text
+AI_JOB_EXECUTOR=dry-run
 AI_JOB_API_HOST=127.0.0.1
 AI_JOB_API_PORT=8787
 AI_JOB_API_TOKEN=change-me
@@ -131,7 +135,34 @@ AI_JOB_BATCH_SIZE=5
 AI_JOB_MAX_ATTEMPTS=3
 ```
 
-If `AI_JOB_API_TOKEN` is set, requests must send:
+### Real AI provider
+
+The provider layer is deliberately vendor-neutral. It uses the standard OpenAI-compatible `POST /chat/completions` contract, so the same adapter can target OpenAI, OpenRouter, Groq, Together or another compatible gateway.
+
+Enable it explicitly:
+
+```text
+AI_JOB_EXECUTOR=openai-compatible
+AI_PROVIDER_API_KEY=...
+AI_PROVIDER_BASE_URL=https://api.openai.com/v1
+AI_PROVIDER_MODEL=...
+AI_PROVIDER_SYSTEM_PROMPT=You are an AI Hub execution agent. Follow the task exactly and do not invent facts.
+AI_PROVIDER_TEMPERATURE=0
+AI_PROVIDER_MAX_TOKENS=512
+AI_PROVIDER_TIMEOUT_MS=120000
+```
+
+Run a direct provider smoke test:
+
+```bash
+npm run ai-jobs:provider-smoke
+```
+
+The provider output is hashed as `sha256:<hex>` by `AIProviderJobExecutor`. The result hash is the value that can later cross the off-chain/on-chain trust boundary; raw model output is not put on-chain.
+
+Do not commit API keys. A template is provided in `.env.ai-jobs.example`.
+
+If `AI_JOB_API_TOKEN` is set, HTTP requests must send:
 
 ```text
 Authorization: Bearer <token>
@@ -155,9 +186,7 @@ AI_JOB_BATCH_SIZE=5
 AI_JOB_MAX_ATTEMPTS=3
 ```
 
-The default executor remains dry-run. This is deliberate: the worker can safely be tested without wallet signing or blockchain transactions. A real AI provider and on-chain settlement adapter will be attached later at the executor/trust-boundary layer.
-
-The API is intentionally a control-plane boundary. A production deployment can replace the dry-run executor with a real provider adapter without changing the HTTP routes or job lifecycle model.
+The worker also respects `AI_JOB_EXECUTOR`. Keep `dry-run` for local development; use `openai-compatible` only when the provider credentials and model are intentionally configured.
 
 This mirrors the useful heartbeat/coalescing pattern used by modern agent runtimes while keeping AI Hub's execution semantics tied to its on-chain job and activity pipeline.
 
