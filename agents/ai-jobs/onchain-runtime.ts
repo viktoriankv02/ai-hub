@@ -6,30 +6,16 @@ import { JsonOnchainJobBindingStore } from "./onchain-job-bindings.js";
 import { OnchainJobProvisioner } from "./onchain-job-provisioner.js";
 import { OnchainRewardSettler } from "./onchain-reward-settler.js";
 
-export interface EVMOnchainRuntimeOptions {
-  rpcUrl: string;
-  privateKey: string;
-  assignmentPrivateKey?: string;
-  payoutPrivateKey?: string;
-  engineAddress: string;
-  rewardTokenAddress: string;
-  completionReporterAddress: string;
-  bindingStorePath?: string;
-  autoAssign?: boolean;
-  autoSettleReward?: boolean;
-  activityType?: string;
-  projectId?: string;
-  metadataHash?: string;
-  agentIdMap?: Record<string, string>;
-}
+export interface EVMOnchainRuntimeOptions { rpcUrl: string; privateKey: string; assignmentPrivateKey?: string; payoutPrivateKey?: string; engineAddress: string; rewardTokenAddress: string; completionReporterAddress: string; bindingStorePath?: string; autoAssign?: boolean; autoSettleReward?: boolean; activityType?: string; projectId?: string; metadataHash?: string; agentIdMap?: Record<string, string>; }
 export interface EVMOnchainRuntime { provider: JsonRpcProvider; signer: Wallet; assignmentSigner: Wallet; payoutSigner: Wallet; provisioner: OnchainJobProvisioner; coordinator: OnchainCompletionCoordinator; }
 function required(value: string | undefined, name: string): string { if (!value?.trim()) throw new Error(`${name} is required`); return value.trim(); }
 
 export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMOnchainRuntime {
   const provider = new JsonRpcProvider(required(options.rpcUrl, "rpcUrl"));
-  const signer = new Wallet(required(options.privateKey, "privateKey"), provider);
-  const assignmentSigner = new Wallet(options.assignmentPrivateKey?.trim() || signer.privateKey, provider);
-  const payoutSigner = new Wallet(options.payoutPrivateKey?.trim() || signer.privateKey, provider);
+  const fundingPrivateKey = required(options.privateKey, "privateKey");
+  const signer = new Wallet(fundingPrivateKey, provider);
+  const assignmentSigner = new Wallet(options.assignmentPrivateKey?.trim() || fundingPrivateKey, provider);
+  const payoutSigner = new Wallet(options.payoutPrivateKey?.trim() || fundingPrivateKey, provider);
   const engineAddress = required(options.engineAddress, "engineAddress");
   const rewardTokenAddress = required(options.rewardTokenAddress, "rewardTokenAddress");
   const completionReporterAddress = required(options.completionReporterAddress, "completionReporterAddress");
