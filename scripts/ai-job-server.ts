@@ -21,11 +21,13 @@ const onchain = onchainEnabled ? createEVMOnchainRuntime({
   rpcUrl: process.env.AI_JOB_RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "",
   privateKey: process.env.AI_JOB_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? "",
   assignmentPrivateKey: process.env.AI_JOB_ASSIGNMENT_PRIVATE_KEY,
+  payoutPrivateKey: process.env.AI_JOB_PAYOUT_PRIVATE_KEY,
   engineAddress: process.env.AI_AGENT_ENGINE_ADDRESS ?? "",
   rewardTokenAddress: process.env.AI_REWARD_TOKEN_ADDRESS ?? "",
   completionReporterAddress: process.env.AI_COMPLETION_REPORTER_ADDRESS ?? "",
   bindingStorePath: process.env.AI_ONCHAIN_BINDINGS_STORE ?? "./data/onchain-job-bindings.json",
   autoAssign: process.env.AI_JOB_AUTO_ASSIGN !== "0",
+  autoSettleReward: process.env.AI_JOB_AUTO_SETTLE_REWARD === "1" || process.env.AI_JOB_AUTO_SETTLE_REWARD === "true",
   activityType: process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED",
   projectId: process.env.AI_JOB_PROJECT_ID,
   metadataHash: process.env.AI_JOB_METADATA_HASH,
@@ -44,6 +46,7 @@ server.listen(port, host, async () => {
   console.log(`Batch size: ${batchSize}`);
   console.log(`Max attempts: ${maxAttempts}`);
   console.log(`On-chain completion: ${onchainEnabled ? "enabled" : "disabled"}`);
+  console.log(`Auto-settle reward: ${process.env.AI_JOB_AUTO_SETTLE_REWARD === "1" || process.env.AI_JOB_AUTO_SETTLE_REWARD === "true" ? "enabled" : "disabled"}`);
   if (executorMode === "openai-compatible") {
     console.log(`Provider base URL: ${process.env.AI_PROVIDER_BASE_URL ?? "https://api.openai.com/v1"}`);
     console.log(`Provider model: ${process.env.AI_PROVIDER_MODEL ?? "<missing>"}`);
@@ -51,6 +54,7 @@ server.listen(port, host, async () => {
   if (onchain) {
     console.log(`On-chain funding signer: ${await onchain.signer.getAddress()}`);
     console.log(`On-chain assignment signer: ${await onchain.assignmentSigner.getAddress()}`);
+    console.log(`On-chain payout signer: ${await onchain.payoutSigner.getAddress()}`);
     console.log(`On-chain engine: ${process.env.AI_AGENT_ENGINE_ADDRESS}`);
     console.log(`Completion reporter: ${process.env.AI_COMPLETION_REPORTER_ADDRESS}`);
   }
