@@ -12,27 +12,20 @@ export class AIJobHttpApi {
   constructor(private readonly service: AIJobService, options: AIJobHttpApiOptions = {}) {
     this.token = options.token?.trim() || undefined;
     this.maxBodyBytes = options.maxBodyBytes ?? 1_000_000;
-    if (!Number.isInteger(this.maxBodyBytes) || this.maxBodyBytes < 1) {
-      throw new Error("maxBodyBytes must be a positive integer");
-    }
+    if (!Number.isInteger(this.maxBodyBytes) || this.maxBodyBytes < 1) throw new Error("maxBodyBytes must be a positive integer");
   }
 
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       if (req.method === "OPTIONS") return this.write(res, 204, undefined);
       if (!this.authorized(req)) return this.write(res, 401, { error: "unauthorized" });
-
       const path = new URL(req.url ?? "/", "http://localhost").pathname;
-      if (req.method === "GET" && path === "/health") {
-        return this.write(res, 200, { status: "ok", service: "ai-job-control-plane" });
-      }
-      if (req.method === "GET" && path === "/jobs") return this.write(res, 200, { jobs: this.service.list() });
-      if (req.method === "POST" && path === "/jobs") {
-        const job = this.service.enqueue(await this.readJson<AIJobRequest>(req));
-        return this.write(res, 201, { job });
-      }
 
-      const match = path.match(/^\/jobs\/([^/]+)(?:\/(run|retry|cancel|provision-onchain|submit-onchain))?$/);
+      if (req.method === "GET" && path === "/health") return this.write(res, 200, { status: "ok", service: "ai-job-control-plane" });
+      if (req.method === "GET" && path === "/jobs") return this.write(res, 200, { jobs: this.service.list() });
+      if (req.method === "POST" && path === "/jobs") return this.write(res, 201, { job: this.service.enqueue(await this.readJson<AIJobRequest>(req)) });
+
+      const match = path.match(/^\/jobs\/([^/]+)(?:\/(run|retry|cancel|provision-onchain|submit-onchain|run-and-submit))?$/);
       if (match) {
         const id = decodeURIComponent(match[1]);
         const action = match[2];
@@ -42,15 +35,14 @@ export class AIJobHttpApi {
         }
         if (req.method !== "POST") return this.write(res, 404, { error: "route_not_found" });
         if (action === "run") return this.write(res, 200, { job: await this.service.run(id) });
+        if (action === "run-and-submit") return this.write(res, 200, { result: await this.service.runAndSubmitOnchain(id) });
         if (action === "retry") return this.write(res, 200, { job: this.service.retry(id) });
         if (action === "cancel") return this.write(res, 200, { job: this.service.cancel(id) });
         if (action === "provision-onchain") return this.write(res, 200, { result: await this.service.provisionOnchain(id) });
         if (action === "submit-onchain") return this.write(res, 200, { result: await this.service.submitCompletionOnchain(id) });
       }
 
-      if (req.method === "POST" && path === "/jobs/drain") {
-        return this.write(res, 200, await this.service.drain());
-      }
+      if (req.method === "POST" && path === "/jobs/drain") return this.write(res, 200, await this.service.drain());
       return this.write(res, 404, { error: "route_not_found" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -74,9 +66,7 @@ export class AIJobHttpApi {
     return server;
   }
 
-  private authorized(req: IncomingMessage): boolean {
-    return !this.token || req.headers.authorization === `Bearer ${this.token}`;
-  }
+  private authorized(req: IncomingMessage): boolean { return !this.token || req.headers.authorization === `Bearer ${this.token}`; }
 
   private async readJson<T>(req: IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
@@ -94,7 +84,6 @@ export class AIJobHttpApi {
 
   private write(res: ServerResponse, status: number, body: unknown): void {
     res.statusCode = status;
-    if (status !== 204) res.end(JSON.stringify(body));
-    else res.end();
+    status === 204 ? res.end() : res.end(JSON.stringify(body));
   }
 }
