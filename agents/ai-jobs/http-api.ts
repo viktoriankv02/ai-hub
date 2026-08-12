@@ -12,11 +12,6 @@ export interface AIJobHttpServerOptions extends AIJobHttpApiOptions {
   port?: number;
 }
 
-/**
- * Small dependency-free HTTP control plane for local/backend development.
- * It deliberately exposes the AIJobService boundary rather than touching
- * persistence or executors directly.
- */
 export class AIJobHttpApi {
   private readonly token?: string;
   private readonly maxBodyBytes: number;
@@ -65,7 +60,7 @@ export class AIJobHttpApi {
         return;
       }
 
-      const match = path.match(/^\/jobs\/([^/]+)(?:\/(run|retry|cancel))?$/);
+      const match = path.match(/^\/jobs\/([^/]+)(?:\/(run|retry|cancel|provision-onchain|submit-onchain))?$/);
       if (match) {
         const id = decodeURIComponent(match[1]);
         const action = match[2];
@@ -83,6 +78,18 @@ export class AIJobHttpApi {
         if (req.method === "POST" && action === "run") {
           const job = await this.service.run(id);
           this.write(res, 200, { job });
+          return;
+        }
+
+        if (req.method === "POST" && action === "provision-onchain") {
+          const result = await this.service.provisionOnchain(id);
+          this.write(res, 200, { result });
+          return;
+        }
+
+        if (req.method === "POST" && action === "submit-onchain") {
+          const result = await this.service.submitCompletionOnchain(id);
+          this.write(res, 200, { result });
           return;
         }
 
