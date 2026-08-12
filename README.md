@@ -16,6 +16,7 @@ AI Hub is a multi-chain smart-contract infrastructure project designed to provid
 - Drop Hunter discovery, scoring, execution gating and idempotency
 - AI agent runtime + funded AI job pipeline
 - Off-chain AI job orchestration, persistence, retry and batching
+- Dependency-free local HTTP control plane for AI jobs
 
 ### AI agent execution pipeline
 
@@ -82,7 +83,58 @@ The first implementation lives under `agents/ai-jobs/`:
 - `planner.ts` — converts high-scoring Drop Hunter opportunities into executable job requests.
 - `runner.ts` — drains a bounded queue batch.
 - `json-store.ts` — local durable store with a versioned file format.
+- `executor.ts` — provider boundary plus deterministic dry-run executor.
+- `service.ts` — application service boundary for queue operations.
+- `http-api.ts` — local HTTP control plane.
 - `store.ts` — in-memory implementation for tests.
+
+### AI job HTTP API
+
+Start the local control plane:
+
+```bash
+npm run ai-jobs:server
+```
+
+Default endpoint:
+
+```text
+http://127.0.0.1:8787
+```
+
+Routes:
+
+```text
+GET  /health
+GET  /jobs
+POST /jobs
+GET  /jobs/:id
+POST /jobs/:id/run
+POST /jobs/:id/retry
+POST /jobs/:id/cancel
+POST /jobs/drain
+```
+
+The server uses the durable JSON store at `./data/ai-jobs.json` and the deterministic `DryRunAIExecutor` by default. It does **not** sign wallets or send blockchain transactions.
+
+Optional environment variables:
+
+```text
+AI_JOB_API_HOST=127.0.0.1
+AI_JOB_API_PORT=8787
+AI_JOB_API_TOKEN=change-me
+AI_JOB_STORE=./data/ai-jobs.json
+AI_JOB_BATCH_SIZE=5
+AI_JOB_MAX_ATTEMPTS=3
+```
+
+If `AI_JOB_API_TOKEN` is set, requests must send:
+
+```text
+Authorization: Bearer <token>
+```
+
+The API is intentionally a control-plane boundary. A production deployment can replace the dry-run executor with a real provider adapter without changing the HTTP routes or job lifecycle model.
 
 This mirrors the useful heartbeat/coalescing pattern used by modern agent runtimes while keeping AI Hub's execution semantics tied to its on-chain job and activity pipeline.
 
