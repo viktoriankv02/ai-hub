@@ -7,20 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 interface IAIAgentRuntime {
     function canExecute(uint256 agentId) external view returns (bool);
-    function getAgent(uint256 agentId) external view returns (
-        uint256 id,
-        address owner,
-        string memory name,
-        string memory endpoint,
-        string memory metadataURI,
-        string memory version,
-        uint256 createdAt,
-        uint256 updatedAt,
-        uint256 heartbeatAt,
-        uint8 status,
-        bool verified,
-        bool exists
-    );
+    function agentOwner(uint256 agentId) external view returns (address);
 }
 
 /// @title AIAgentEngine
@@ -145,7 +132,7 @@ contract AIAgentEngine is Ownable {
         amount = job.reward;
         require(amount > 0, "Agent: reward already paid");
         job.reward = 0;
-        (, address receiver, , , , , , , , , , ) = runtime.getAgent(job.agentId);
+        address receiver = runtime.agentOwner(job.agentId);
         rewardToken.safeTransfer(receiver, amount);
         emit JobRewardPaid(jobId, receiver, amount);
     }
