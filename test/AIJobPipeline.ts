@@ -59,9 +59,8 @@ describe("AI agent job pipeline", function () {
       )
     ).wait();
 
-    const agent = await runtime.getAgent(1);
-    expect(agent.owner).to.equal(developerAddress);
-    expect(agent.verified).to.equal(false);
+    expect(await runtime.agentOwner(1)).to.equal(developerAddress);
+    expect(await runtime.isAgentVerified(1)).to.equal(false);
 
     await (await runtime.connect(owner).setVerified(1, true)).wait();
     await (await runtime.connect(developer).startAgent(1)).wait();
