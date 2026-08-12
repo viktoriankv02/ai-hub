@@ -1,12 +1,5 @@
 import { resolve } from "node:path";
-import {
-  AIJobHttpApi,
-  AIJobOrchestrator,
-  AIJobService,
-  createAIJobExecutor,
-  createEVMOnchainRuntime,
-  JsonFileAIJobStore,
-} from "../agents/ai-jobs/index.js";
+import { AIJobHttpApi, AIJobOrchestrator, AIJobService, createAIJobExecutor, createEVMOnchainRuntime, JsonFileAIJobStore } from "../agents/ai-jobs/index.js";
 
 const port = Number(process.env.AI_JOB_API_PORT ?? 8787);
 const host = process.env.AI_JOB_API_HOST ?? "127.0.0.1";
@@ -24,27 +17,22 @@ if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new Error("AI_JOB_M
 const store = new JsonFileAIJobStore(storePath);
 const orchestrator = new AIJobOrchestrator(store, { maxAttempts });
 const executor = createAIJobExecutor();
+const onchain = onchainEnabled ? createEVMOnchainRuntime({
+  rpcUrl: process.env.AI_JOB_RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "",
+  privateKey: process.env.AI_JOB_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? "",
+  assignmentPrivateKey: process.env.AI_JOB_ASSIGNMENT_PRIVATE_KEY,
+  engineAddress: process.env.AI_AGENT_ENGINE_ADDRESS ?? "",
+  rewardTokenAddress: process.env.AI_REWARD_TOKEN_ADDRESS ?? "",
+  completionReporterAddress: process.env.AI_COMPLETION_REPORTER_ADDRESS ?? "",
+  bindingStorePath: process.env.AI_ONCHAIN_BINDINGS_STORE ?? "./data/onchain-job-bindings.json",
+  autoAssign: process.env.AI_JOB_AUTO_ASSIGN !== "0",
+  activityType: process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED",
+  projectId: process.env.AI_JOB_PROJECT_ID,
+  metadataHash: process.env.AI_JOB_METADATA_HASH,
+  agentIdMap: process.env.AI_AGENT_ID_MAP_JSON ? JSON.parse(process.env.AI_AGENT_ID_MAP_JSON) : {},
+}) : undefined;
 
-const onchain = onchainEnabled
-  ? createEVMOnchainRuntime({
-      rpcUrl: process.env.AI_JOB_RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "",
-      privateKey: process.env.AI_JOB_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? "",
-      engineAddress: process.env.AI_AGENT_ENGINE_ADDRESS ?? "",
-      rewardTokenAddress: process.env.AI_REWARD_TOKEN_ADDRESS ?? "",
-      completionReporterAddress: process.env.AI_COMPLETION_REPORTER_ADDRESS ?? "",
-      bindingStorePath: process.env.AI_ONCHAIN_BINDINGS_STORE ?? "./data/onchain-job-bindings.json",
-      autoAssign: process.env.AI_JOB_AUTO_ASSIGN !== "0",
-      activityType: process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED",
-      projectId: process.env.AI_JOB_PROJECT_ID,
-      metadataHash: process.env.AI_JOB_METADATA_HASH,
-      agentIdMap: process.env.AI_AGENT_ID_MAP_JSON ? JSON.parse(process.env.AI_AGENT_ID_MAP_JSON) : {},
-    })
-  : undefined;
-
-const service = new AIJobService(orchestrator, executor, {
-  batchSize,
-  onchainCompletionCoordinator: onchain?.coordinator,
-});
+const service = new AIJobService(orchestrator, executor, { batchSize, onchainCompletionCoordinator: onchain?.coordinator });
 const api = new AIJobHttpApi(service, { token });
 const server = api.createServer();
 
@@ -56,14 +44,13 @@ server.listen(port, host, async () => {
   console.log(`Batch size: ${batchSize}`);
   console.log(`Max attempts: ${maxAttempts}`);
   console.log(`On-chain completion: ${onchainEnabled ? "enabled" : "disabled"}`);
-
   if (executorMode === "openai-compatible") {
     console.log(`Provider base URL: ${process.env.AI_PROVIDER_BASE_URL ?? "https://api.openai.com/v1"}`);
     console.log(`Provider model: ${process.env.AI_PROVIDER_MODEL ?? "<missing>"}`);
   }
-
   if (onchain) {
-    console.log(`On-chain signer: ${await onchain.signer.getAddress()}`);
+    console.log(`On-chain funding signer: ${await onchain.signer.getAddress()}`);
+    console.log(`On-chain assignment signer: ${await onchain.assignmentSigner.getAddress()}`);
     console.log(`On-chain engine: ${process.env.AI_AGENT_ENGINE_ADDRESS}`);
     console.log(`Completion reporter: ${process.env.AI_COMPLETION_REPORTER_ADDRESS}`);
   }
