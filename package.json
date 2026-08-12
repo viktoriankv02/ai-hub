@@ -15,6 +15,7 @@
     "ai-jobs:plan": "tsx scripts/ai-job-plan-once.ts",
     "ai-jobs:server": "tsx scripts/ai-job-server.ts",
     "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts",
+    "ai-jobs:onchain-smoke": "tsx scripts/ai-job-onchain-smoke.ts",
     "ai-jobs:worker": "tsx scripts/ai-job-worker.ts",
     "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts",
     "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts",
