@@ -92,15 +92,15 @@ export class AIJobScheduler {
     if (this.running) throw new Error("AI job scheduler tick already running");
     this.running = true;
 
-    const timestamp = this.options.now?.() ?? new Date().toISOString();
-    this.stateValue = {
-      ...this.stateValue,
-      lastStartedAt: timestamp,
-      totalTicks: this.stateValue.totalTicks + 1,
-    };
-
     try {
       if (!this.initialized) await this.loadState();
+
+      const timestamp = this.options.now?.() ?? new Date().toISOString();
+      this.stateValue = {
+        ...this.stateValue,
+        lastStartedAt: timestamp,
+        totalTicks: this.stateValue.totalTicks + 1,
+      };
       await this.persist();
 
       const result = await this.service.drain();
@@ -122,6 +122,7 @@ export class AIJobScheduler {
       await this.options.onCycle?.(cycle);
       return cycle;
     } catch (error) {
+      const timestamp = this.options.now?.() ?? new Date().toISOString();
       this.stateValue = {
         ...this.stateValue,
         lastErrorAt: timestamp,
