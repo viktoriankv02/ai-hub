@@ -4,20 +4,13 @@ import { AIJobRunner } from "./runner.js";
 import type { OnchainCompletionCoordinator, OnchainCompletionCoordinatorResult } from "./onchain-completion-coordinator.js";
 import type { OnchainJobProvisioningResult } from "./onchain-job-provisioner.js";
 
-export interface AIJobServiceOptions {
-  batchSize?: number;
-  onchainCompletionCoordinator?: OnchainCompletionCoordinator;
-}
+export interface AIJobServiceOptions { batchSize?: number; onchainCompletionCoordinator?: OnchainCompletionCoordinator; }
 
 export class AIJobService {
   private readonly runner: AIJobRunner;
   private readonly onchainCompletionCoordinator?: OnchainCompletionCoordinator;
 
-  constructor(
-    private readonly orchestrator: AIJobOrchestrator,
-    private readonly executor: AIJobExecutor,
-    options: AIJobServiceOptions = {},
-  ) {
+  constructor(private readonly orchestrator: AIJobOrchestrator, private readonly executor: AIJobExecutor, options: AIJobServiceOptions = {}) {
     this.runner = new AIJobRunner(orchestrator, executor, options);
     this.onchainCompletionCoordinator = options.onchainCompletionCoordinator;
   }
@@ -31,21 +24,26 @@ export class AIJobService {
     return result.job;
   }
 
+  async runAndSubmitOnchain(id: string): Promise<OnchainCompletionCoordinatorResult> {
+    const job = await this.run(id);
+    return this.submitCompletionForJob(job);
+  }
+
   async provisionOnchain(id: string): Promise<OnchainJobProvisioningResult> {
-    const coordinator = this.requireOnchainCoordinator();
-    const job = this.requireJob(id);
-    return coordinator.provision(job);
+    return this.requireOnchainCoordinator().provision(this.requireJob(id));
   }
 
   async submitCompletionOnchain(id: string): Promise<OnchainCompletionCoordinatorResult> {
-    const coordinator = this.requireOnchainCoordinator();
-    const job = this.requireJob(id);
-    return coordinator.attestAndSubmit(job);
+    return this.submitCompletionForJob(this.requireJob(id));
   }
 
   cancel(id: string): AIJobRecord { return this.orchestrator.cancel(id); }
   retry(id: string): AIJobRecord { return this.orchestrator.retry(id); }
   async drain() { return this.runner.drain(); }
+
+  private async submitCompletionForJob(job: AIJobRecord): Promise<OnchainCompletionCoordinatorResult> {
+    return this.requireOnchainCoordinator().attestAndSubmit(job);
+  }
 
   private requireJob(id: string): AIJobRecord {
     const job = this.orchestrator.get(id);
@@ -54,9 +52,7 @@ export class AIJobService {
   }
 
   private requireOnchainCoordinator(): OnchainCompletionCoordinator {
-    if (!this.onchainCompletionCoordinator) {
-      throw new Error("onchain completion coordinator is not configured");
-    }
+    if (!this.onchainCompletionCoordinator) throw new Error("onchain completion coordinator is not configured");
     return this.onchainCompletionCoordinator;
   }
 }
