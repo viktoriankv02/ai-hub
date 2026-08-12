@@ -14,7 +14,8 @@
     "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
     "ai-jobs:plan": "tsx scripts/ai-job-plan-once.ts",
     "ai-jobs:server": "tsx scripts/ai-job-server.ts",
-    "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts"
+    "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts",
+    "ai-jobs:worker": "tsx scripts/ai-job-worker.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
