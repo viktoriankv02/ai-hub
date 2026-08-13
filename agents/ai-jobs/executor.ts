@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import type { AIJobExecutor, AIJobExecutionResult, AIJobRecord } from "./types.js";
+import type { AIJobExecutor as AIJobExecutorContract, AIJobExecutionResult, AIJobRecord } from "./types.js";
+
+export type { AIJobExecutor } from "./types.js";
 
 export interface AIJobExecutionContext {
   executePrompt(job: AIJobRecord): Promise<string>;
@@ -10,7 +12,7 @@ export interface AIJobExecutionContext {
  * The provider returns plain output; AI Hub canonicalizes it into a SHA-256
  * result hash before the result can cross the on-chain trust boundary.
  */
-export class AIProviderJobExecutor implements AIJobExecutor {
+export class AIProviderJobExecutor implements AIJobExecutorContract {
   constructor(private readonly provider: AIJobExecutionContext) {}
 
   async execute(job: AIJobRecord): Promise<AIJobExecutionResult> {
@@ -28,7 +30,7 @@ export class AIProviderJobExecutor implements AIJobExecutor {
 }
 
 /** Safe local executor for development and deterministic integration tests. */
-export class DryRunAIExecutor implements AIJobExecutor {
+export class DryRunAIExecutor implements AIJobExecutorContract {
   async execute(job: AIJobRecord): Promise<AIJobExecutionResult> {
     const canonical = [job.agentId, job.taskHash, job.prompt].join("\n");
     const resultHash = createHash("sha256").update(canonical, "utf8").digest("hex");
