@@ -58,6 +58,21 @@ npm run ai-jobs:onchain-smoke
 
 The on-chain smoke requires a running agent and a funded reward-token balance for the funding signer.
 
+## Durable completion publication
+
+The completion bridge is memory-idempotent by default. For a persistent worker/server, set:
+
+```text
+AI_JOB_COMPLETION_STORE=./data/ai-job-completions.json
+```
+
+When configured, a successful publication records the off-chain job id, transaction id and publication timestamp. After a process restart, the bridge recognizes an already-published job and does not submit it again. The attestation is reconstructed from the current completed job before returning the stored transaction id.
+
+This is deliberately separate from the on-chain binding store:
+
+- `AI_ONCHAIN_BINDINGS_STORE` maps an off-chain job to its funded on-chain job id.
+- `AI_JOB_COMPLETION_STORE` records the publication transaction for a completed job.
+
 ## Deployment
 
 Deploy the AI runtime after the core contracts and reward token exist:
