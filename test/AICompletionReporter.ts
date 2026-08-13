@@ -1,15 +1,9 @@
 import { expect } from "chai";
-import { keccak256, toUtf8Bytes } from "ethers";
 import { network } from "hardhat";
 import { canonicalCompletionMessage } from "../agents/ai-jobs/completion-attestation.js";
+import { canonicalCompletionId } from "../agents/ai-jobs/completion-id.js";
 
 const { ethers } = await network.connect();
-
-function completionId(agentId: string, jobId: string, taskHash: string, resultHash: string, completedAt: string, signer: string): string {
-  return keccak256(toUtf8Bytes([
-    "AI_HUB_JOB_COMPLETION_V1", jobId, agentId, taskHash, resultHash, completedAt, signer,
-  ].join("\n")));
-}
 
 describe("AICompletionReporter", function () {
   async function deploySystem() {
@@ -63,7 +57,7 @@ describe("AICompletionReporter", function () {
       activityType: ethers.id("AI_JOB_COMPLETED"),
       projectId: ethers.id("AI_HUB_JOB_PIPELINE"),
       metadataHash: ethers.id("META_REPORTER"),
-      completionId: completionId(payload.agentId, payload.jobId, payload.taskHash, payload.resultHash, payload.completedAt, signer),
+      completionId: canonicalCompletionId(payload, signer),
     };
   }
 
@@ -75,14 +69,32 @@ describe("AICompletionReporter", function () {
     const developerAddress = await developer.getAddress();
     const args = [1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId] as const;
 
+    expect(await reporter.connect(owner).expectedCompletionId(
+      1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, await owner.getAddress(),
+    )).to.equal(attestation.completionId);
     expect(await reporter.connect(owner).submitVerifiedCompletion.staticCall(...args)).to.equal(1n);
     await (await reporter.connect(owner).submitVerifiedCompletion(...args)).wait();
 
     const completed = await engine.jobs(1);
     expect(completed.completed).to.equal(true);
-    expect(completed.resultHash).to.equal(ethers.id("RESULT_REPORTER"));
+    expect(completed.resultHash).to.equal(ethers.keccak256(ethers.toUtf8Bytes("RESULT_REPORTER")));
     expect(await registry.totalActivities()).to.equal(1n);
     expect(await registry.activityCount(developerAddress)).to.equal(1n);
+  });
+
+  it("binds the signed agent id to the funded on-chain agent", async function () {
+    const system = await deploySystem();
+    await createAssignedJob(system);
+    const { owner, reporter } = system;
+    const attestation = await signedCompletion(system);
+    const forgedPayload = { ...attestation, agentId: "999" };
+    const forgedSignature = await owner.signMessage(canonicalCompletionMessage(forgedPayload));
+    const forgedId = canonicalCompletionId(forgedPayload, await owner.getAddress());
+
+    await expect(reporter.connect(owner).submitVerifiedCompletion(
+      1, forgedPayload.agentId, forgedPayload.taskHash, forgedPayload.resultHash, forgedPayload.completedAt,
+      forgedSignature, forgedPayload.activityType, forgedPayload.projectId, forgedPayload.metadataHash, forgedId,
+    )).to.be.revertedWithCustomError(reporter, "InvalidAttestation");
   });
 
   it("requires an enabled completion caller", async function () {
@@ -105,8 +117,7 @@ describe("AICompletionReporter", function () {
       jobId: "1", agentId: "1", taskHash: "TASK_REPORTER", resultHash: "RESULT_UNTRUSTED", completedAt: "2026-08-13T17:00:00.000Z",
     };
     const signature = await other.signMessage(canonicalCompletionMessage(payload));
-    const otherAddress = await other.getAddress();
-    const completion = completionId(payload.agentId, payload.jobId, payload.taskHash, payload.resultHash, payload.completedAt, otherAddress);
+    const completion = canonicalCompletionId(payload, await other.getAddress());
     await expect(reporter.connect(owner).submitVerifiedCompletion(
       1, payload.agentId, payload.taskHash, payload.resultHash, payload.completedAt, signature,
       ethers.id("AI_JOB_COMPLETED"), ethers.id("AI_HUB_JOB_PIPELINE"), ethers.id("META_REPORTER"), completion,

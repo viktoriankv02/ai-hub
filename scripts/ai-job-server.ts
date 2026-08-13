@@ -20,6 +20,8 @@ const executor = createAIJobExecutor();
 const onchain = onchainEnabled ? createEVMOnchainRuntime({
   rpcUrl: process.env.AI_JOB_RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "",
   privateKey: process.env.AI_JOB_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? "",
+  completionCallerPrivateKey: process.env.AI_COMPLETION_CALLER_PRIVATE_KEY,
+  attestationPrivateKey: process.env.AI_COMPLETION_ATTESTER_PRIVATE_KEY,
   assignmentPrivateKey: process.env.AI_JOB_ASSIGNMENT_PRIVATE_KEY,
   payoutPrivateKey: process.env.AI_JOB_PAYOUT_PRIVATE_KEY,
   engineAddress: process.env.AI_AGENT_ENGINE_ADDRESS ?? "",
@@ -53,6 +55,8 @@ server.listen(port, host, async () => {
   }
   if (onchain) {
     console.log(`On-chain funding signer: ${await onchain.signer.getAddress()}`);
+    console.log(`Completion caller signer: ${await onchain.completionCallerSigner.getAddress()}`);
+    console.log(`Attestation signer: ${await onchain.attestationSigner.getAddress()}`);
     console.log(`On-chain assignment signer: ${await onchain.assignmentSigner.getAddress()}`);
     console.log(`On-chain payout signer: ${await onchain.payoutSigner.getAddress()}`);
     console.log(`On-chain engine: ${process.env.AI_AGENT_ENGINE_ADDRESS}`);

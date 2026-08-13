@@ -1,6 +1,10 @@
 import { expect } from "chai";
 import { Wallet } from "ethers";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AIJobCompletionBridge, MemoryCompletionSink } from "../agents/ai-jobs/completion-bridge.js";
+import { JsonCompletionPublicationStore } from "../agents/ai-jobs/completion-store.js";
 import type { AIJobRecord } from "../agents/ai-jobs/types.js";
 
 function completedJob(): AIJobRecord {
@@ -62,5 +66,32 @@ describe("AI job completion bridge", function () {
     expect(stored).to.not.equal(undefined);
     expect(stored?.transactionId).to.equal(published.transactionId);
     expect(stored?.attestation.resultHash).to.equal("sha256:result-bridge");
+  });
+
+  it("restores a durable publication without calling the sink again", async function () {
+    const directory = mkdtempSync(join(tmpdir(), "ai-hub-bridge-"));
+    const file = join(directory, "completions.json");
+    const signer = Wallet.createRandom();
+
+    try {
+      const firstSink = new MemoryCompletionSink();
+      const firstBridge = new AIJobCompletionBridge(firstSink, {
+        publicationStore: new JsonCompletionPublicationStore(file),
+      });
+      const first = await firstBridge.publish(completedJob(), signer);
+
+      const secondSink = new MemoryCompletionSink();
+      const secondBridge = new AIJobCompletionBridge(secondSink, {
+        publicationStore: new JsonCompletionPublicationStore(file),
+      });
+      const restored = await secondBridge.publish(completedJob(), Wallet.createRandom());
+
+      expect(restored.reused).to.equal(true);
+      expect(restored.transactionId).to.equal(first.transactionId);
+      expect(restored.attestation.signature).to.equal(first.attestation.signature);
+      expect(secondSink.submissions).to.have.length(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
