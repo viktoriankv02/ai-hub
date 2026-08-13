@@ -9,6 +9,8 @@ import { OnchainRewardSettler } from "./onchain-reward-settler.js";
 export interface EVMOnchainRuntimeOptions {
   rpcUrl: string;
   privateKey: string;
+  completionCallerPrivateKey?: string;
+  attestationPrivateKey?: string;
   assignmentPrivateKey?: string;
   payoutPrivateKey?: string;
   engineAddress: string;
@@ -27,6 +29,8 @@ export interface EVMOnchainRuntimeOptions {
 export interface EVMOnchainRuntime {
   provider: JsonRpcProvider;
   signer: Wallet;
+  completionCallerSigner: Wallet;
+  attestationSigner: Wallet;
   assignmentSigner: Wallet;
   payoutSigner: Wallet;
   provisioner: OnchainJobProvisioner;
@@ -42,6 +46,14 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
   const provider = new JsonRpcProvider(required(options.rpcUrl, "rpcUrl"));
   const fundingPrivateKey = required(options.privateKey, "privateKey");
   const signer = new Wallet(fundingPrivateKey, provider);
+  const completionCallerSigner = new Wallet(
+    options.completionCallerPrivateKey?.trim() || fundingPrivateKey,
+    provider,
+  );
+  const attestationSigner = new Wallet(
+    options.attestationPrivateKey?.trim() || options.completionCallerPrivateKey?.trim() || fundingPrivateKey,
+    provider,
+  );
   const assignmentSigner = new Wallet(options.assignmentPrivateKey?.trim() || fundingPrivateKey, provider);
   const payoutSigner = new Wallet(options.payoutPrivateKey?.trim() || fundingPrivateKey, provider);
   const engineAddress = required(options.engineAddress, "engineAddress");
@@ -73,7 +85,7 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
   });
 
   const sink = new EVMCompletionSink({
-    signer,
+    signer: completionCallerSigner,
     reporterAddress: completionReporterAddress,
     activityType: options.activityType ?? "AI_JOB_COMPLETED",
     projectId: options.projectId,
@@ -88,11 +100,20 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
   const coordinator = new OnchainCompletionCoordinator({
     provisioner,
     sink,
-    attestationSigner: signer,
+    attestationSigner,
     rewardSettler,
     autoSettleReward: options.autoSettleReward ?? false,
     completionStorePath: resolve(completionStorePath),
   });
 
-  return { provider, signer, assignmentSigner, payoutSigner, provisioner, coordinator };
+  return {
+    provider,
+    signer,
+    completionCallerSigner,
+    attestationSigner,
+    assignmentSigner,
+    payoutSigner,
+    provisioner,
+    coordinator,
+  };
 }
