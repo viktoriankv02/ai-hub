@@ -82,13 +82,16 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
   });
 
   const rewardSettler = new OnchainRewardSettler(payoutSigner, engineAddress);
+  const completionStorePath = options.completionStorePath
+    ?? process.env.AI_JOB_COMPLETION_STORE
+    ?? "./data/ai-job-completions.json";
   const coordinator = new OnchainCompletionCoordinator({
     provisioner,
     sink,
     attestationSigner: signer,
     rewardSettler,
     autoSettleReward: options.autoSettleReward ?? false,
-    completionStorePath: resolve(options.completionStorePath ?? "./data/onchain-job-completions.json"),
+    completionStorePath: resolve(completionStorePath),
   });
 
   return { provider, signer, assignmentSigner, payoutSigner, provisioner, coordinator };
