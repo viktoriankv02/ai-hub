@@ -6,7 +6,7 @@ export interface CompletionPublicationRecord {
   jobId: string;
   transactionId: string;
   publishedAt: string;
-  attestation?: CompletionAttestation;
+  attestation: CompletionAttestation;
 }
 
 export interface CompletionPublicationStore {
@@ -18,13 +18,27 @@ function validateRecord(record: CompletionPublicationRecord): void {
   if (!record.jobId.trim()) throw new Error("jobId is required");
   if (!record.transactionId.trim()) throw new Error("transactionId is required");
   if (!record.publishedAt.trim()) throw new Error("publishedAt is required");
+  if (!record.attestation || record.attestation.jobId !== record.jobId) {
+    throw new Error("publication attestation must match jobId");
+  }
+  if (!record.attestation.signature.trim() || !record.attestation.signer.trim()) {
+    throw new Error("publication attestation signature and signer are required");
+  }
+}
+
+function cloneRecord(record: CompletionPublicationRecord): CompletionPublicationRecord {
+  return {
+    ...record,
+    attestation: { ...record.attestation },
+  };
 }
 
 export class MemoryCompletionPublicationStore implements CompletionPublicationStore {
   private readonly records = new Map<string, CompletionPublicationRecord>();
 
   get(jobId: string): CompletionPublicationRecord | undefined {
-    return this.records.get(jobId);
+    const record = this.records.get(jobId);
+    return record ? cloneRecord(record) : undefined;
   }
 
   set(record: CompletionPublicationRecord): void {
@@ -33,7 +47,7 @@ export class MemoryCompletionPublicationStore implements CompletionPublicationSt
     if (existing && existing.transactionId !== record.transactionId) {
       throw new Error(`completion ${record.jobId} is already published as ${existing.transactionId}`);
     }
-    this.records.set(record.jobId, record);
+    this.records.set(record.jobId, cloneRecord(record));
   }
 }
 
@@ -45,7 +59,8 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
   }
 
   get(jobId: string): CompletionPublicationRecord | undefined {
-    return this.records.get(jobId);
+    const record = this.records.get(jobId);
+    return record ? cloneRecord(record) : undefined;
   }
 
   set(record: CompletionPublicationRecord): void {
@@ -56,7 +71,7 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
       throw new Error(`completion ${record.jobId} is already published as ${existing.transactionId}`);
     }
 
-    this.records.set(record.jobId, record);
+    this.records.set(record.jobId, cloneRecord(record));
     this.persist();
   }
 
@@ -70,12 +85,7 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
 
     for (const record of records) {
       validateRecord(record);
-      if (record.attestation !== undefined) {
-        if (!record.attestation.jobId || !record.attestation.signature || !record.attestation.signer) {
-          throw new Error("invalid completion attestation in publication record");
-        }
-      }
-      this.records.set(record.jobId, record);
+      this.records.set(record.jobId, cloneRecord(record));
     }
   }
 
