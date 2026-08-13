@@ -1,10 +1,9 @@
 import { resolve } from "node:path";
 import {
-  AIJobHttpApi,
   AIJobOrchestrator,
   AIJobScheduler,
   AIJobService,
-  DryRunAIExecutor,
+  createAIJobExecutor,
   JsonFileAIJobSchedulerStateStore,
   JsonFileAIJobStore,
 } from "../agents/ai-jobs/index.js";
@@ -16,6 +15,7 @@ const jobStorePath = resolve(process.env.AI_JOB_STORE ?? "./data/ai-jobs.json");
 const schedulerStatePath = resolve(
   process.env.AI_JOB_SCHEDULER_STATE ?? "./data/ai-job-scheduler.json",
 );
+const executorMode = process.env.AI_JOB_EXECUTOR ?? "dry-run";
 
 if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
   throw new Error("AI_JOB_WORKER_INTERVAL_MS must be a positive finite number");
@@ -23,7 +23,8 @@ if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
 
 const jobStore = new JsonFileAIJobStore(jobStorePath);
 const orchestrator = new AIJobOrchestrator(jobStore, { maxAttempts });
-const service = new AIJobService(orchestrator, new DryRunAIExecutor(), { batchSize });
+const executor = createAIJobExecutor();
+const service = new AIJobService(orchestrator, executor, { batchSize });
 const stateStore = new JsonFileAIJobSchedulerStateStore(schedulerStatePath);
 
 const scheduler = new AIJobScheduler(service, {
@@ -47,7 +48,11 @@ console.log(`Batch size: ${batchSize}`);
 console.log(`Max attempts: ${maxAttempts}`);
 console.log(`Job store: ${jobStorePath}`);
 console.log(`Scheduler state: ${schedulerStatePath}`);
-console.log("Executor: dry-run");
+console.log(`Executor: ${executorMode}`);
+if (executorMode === "openai-compatible") {
+  console.log(`Provider base URL: ${process.env.AI_PROVIDER_BASE_URL ?? "https://api.openai.com/v1"}`);
+  console.log(`Provider model: ${process.env.AI_PROVIDER_MODEL ?? "<missing>"}`);
+}
 
 const shutdown = () => {
   scheduler.stop();
