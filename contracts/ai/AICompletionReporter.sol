@@ -77,17 +77,12 @@ contract AICompletionReporter is Ownable {
     function expectedCompletionId(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt, address attester) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(
             "AI_HUB_JOB_COMPLETION_V1\n",
-            jobId,
-            "\n",
-            agentId,
-            "\n",
-            taskHash,
-            "\n",
-            resultHash,
-            "\n",
-            completedAt,
-            "\n",
-            attester
+            "jobId=", jobId.toString(), "\n",
+            "agentId=", agentId, "\n",
+            "taskHash=", taskHash, "\n",
+            "resultHash=", resultHash, "\n",
+            "completedAt=", completedAt, "\n",
+            Strings.toHexString(uint160(attester), 20)
         ));
     }
 
