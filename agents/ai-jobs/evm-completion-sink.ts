@@ -11,7 +11,7 @@ import type { CompletionAttestation, CompletionAttestationSink } from "./complet
 import { assertValidCompletionAttestation } from "./completion-attestation.js";
 
 const COMPLETION_REPORTER_ABI = [
-  "function submitVerifiedCompletion(uint256 jobId, bytes32 resultHash, bytes32 activityType, bytes32 projectId, bytes32 metadataHash, bytes32 completionId) returns (uint256 activityId)",
+  "function submitVerifiedCompletion(uint256 jobId, string agentId, string taskHash, string resultHash, string completedAt, bytes signature, bytes32 activityType, bytes32 projectId, bytes32 metadataHash, bytes32 completionId) returns (uint256 activityId)",
 ];
 
 export interface EVMCompletionSinkOptions {
@@ -37,15 +37,15 @@ function bytes32(value: string, label: string): string {
 }
 
 function resultHashBytes32(value: string): string {
-  return isHexString(value, 32) ? value : keccak256(toUtf8Bytes(value));
+  return keccak256(toUtf8Bytes(value));
 }
 
 /**
  * Real EVM sink for the completion-attestation bridge.
  *
- * The sink never sends an unsigned completion. The bridge verifies the
- * attestation first; this sink then resolves the corresponding on-chain job
- * and atomically completes it + records the verified activity.
+ * The sink verifies the attestation locally before submitting it. The reporter
+ * verifies the same signature again on-chain, so a compromised relayer cannot
+ * forge a completion without a configured attester key.
  */
 export class EVMCompletionSink implements CompletionAttestationSink {
   private readonly contract: Contract;
@@ -55,11 +55,7 @@ export class EVMCompletionSink implements CompletionAttestationSink {
     if (!options.reporterAddress) throw new Error("reporterAddress is required");
     if (!options.activityType) throw new Error("activityType is required");
     this.options = options;
-    this.contract = new Contract(
-      options.reporterAddress,
-      COMPLETION_REPORTER_ABI,
-      options.signer,
-    );
+    this.contract = new Contract(options.reporterAddress, COMPLETION_REPORTER_ABI, options.signer);
   }
 
   async submit(attestation: CompletionAttestation): Promise<string> {
@@ -70,9 +66,7 @@ export class EVMCompletionSink implements CompletionAttestationSink {
   async submitDetailed(attestation: CompletionAttestation): Promise<EVMCompletionSubmission> {
     assertValidCompletionAttestation(attestation);
 
-    const onchainJobId = BigInt(
-      await this.options.resolveOnchainJobId(attestation.jobId),
-    );
+    const onchainJobId = BigInt(await this.options.resolveOnchainJobId(attestation.jobId));
     const resultHash = resultHashBytes32(attestation.resultHash);
     const activityType = id(this.options.activityType);
     const projectId = id(this.options.projectId ?? attestation.agentId);
@@ -81,22 +75,24 @@ export class EVMCompletionSink implements CompletionAttestationSink {
       : keccak256(toUtf8Bytes(attestation.resultHash));
 
     const completionId = keccak256(
-      toUtf8Bytes(
-        [
-          attestation.version,
-          attestation.jobId,
-          attestation.agentId,
-          attestation.taskHash,
-          attestation.resultHash,
-          attestation.completedAt,
-          attestation.signer,
-        ].join("\n"),
-      ),
+      toUtf8Bytes([
+        attestation.version,
+        attestation.jobId,
+        attestation.agentId,
+        attestation.taskHash,
+        attestation.resultHash,
+        attestation.completedAt,
+        attestation.signer,
+      ].join("\n")),
     );
 
     const transaction = (await this.contract.submitVerifiedCompletion(
       onchainJobId,
-      resultHash,
+      attestation.agentId,
+      attestation.taskHash,
+      attestation.resultHash,
+      attestation.completedAt,
+      attestation.signature,
       activityType,
       projectId,
       metadataHash,
@@ -113,8 +109,6 @@ export class EVMCompletionSink implements CompletionAttestationSink {
   }
 }
 
-export function createEVMCompletionSink(
-  options: EVMCompletionSinkOptions,
-): EVMCompletionSink {
+export function createEVMCompletionSink(options: EVMCompletionSinkOptions): EVMCompletionSink {
   return new EVMCompletionSink(options);
 }
