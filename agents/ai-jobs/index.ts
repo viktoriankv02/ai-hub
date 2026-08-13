@@ -5,5 +5,6 @@ export * from "./orchestrator.js";
 export * from "./planner.js";
 export * from "./runner.js";
 export * from "./executor.js";
+export * from "./chain-bridge.js";
 export * from "./service.js";
 export * from "./http-api.js";
