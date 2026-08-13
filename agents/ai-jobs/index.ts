@@ -12,6 +12,7 @@ export * from "./json-scheduler-store.js";
 export * from "./http-api.js";
 export * from "./providers/index.js";
 export * from "./completion-attestation.js";
+export * from "./completion-id.js";
 export * from "./completion-bridge.js";
 export * from "./evm-completion-sink.js";
 export * from "./chain-execution.js";
