@@ -5,9 +5,13 @@ import type { OnchainJobBindingStore } from "./onchain-job-bindings.js";
 const ENGINE_ABI = [
   "function createJob(uint256 agentId, bytes32 taskHash, uint256 reward) returns (uint256 jobId)",
   "function assignJob(uint256 jobId)",
+  "function jobs(uint256) view returns (uint256 id, address creator, uint256 agentId, bytes32 taskHash, uint256 reward, bool assigned, bool completed, uint256 createdAt, uint256 completedAt, bytes32 resultHash)",
   "event JobCreated(uint256 indexed jobId, address indexed creator, uint256 indexed agentId, uint256 reward, bytes32 taskHash)",
 ];
-const ERC20_ABI = ["function allowance(address owner, address spender) view returns (uint256)", "function approve(address spender, uint256 amount) returns (bool)"];
+const ERC20_ABI = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+];
 
 export interface OnchainJobProvisionerOptions {
   signer: Signer;
@@ -19,6 +23,7 @@ export interface OnchainJobProvisionerOptions {
   assignmentSigner?: Signer;
   approvalAmount?: bigint;
 }
+
 export interface OnchainJobProvisioningResult {
   offchainJobId: string;
   onchainJobId: bigint;
@@ -28,10 +33,20 @@ export interface OnchainJobProvisioningResult {
   reused: boolean;
 }
 
-function required(value: string, name: string): string { if (!value.trim()) throw new Error(`${name} is required`); return value; }
-function taskHashBytes32(value: string): string { return /^0x[0-9a-fA-F]{64}$/.test(value) ? value : id(value); }
+function required(value: string, name: string): string {
+  if (!value.trim()) throw new Error(`${name} is required`);
+  return value;
+}
+
+function taskHashBytes32(value: string): string {
+  return /^0x[0-9a-fA-F]{64}$/.test(value) ? value : id(value);
+}
+
 function rewardAmount(value: string): bigint {
-  try { const amount = BigInt(value); if (amount > 0n) return amount; } catch {}
+  try {
+    const amount = BigInt(value);
+    if (amount > 0n) return amount;
+  } catch {}
   throw new Error("job reward must be a positive integer token amount");
 }
 
@@ -51,7 +66,24 @@ export class OnchainJobProvisioner {
 
   async provision(job: AIJobRecord): Promise<OnchainJobProvisioningResult> {
     const existing = this.options.bindings.get(job.id);
-    if (existing !== undefined) return { offchainJobId: job.id, onchainJobId: existing, transactionId: "reused", reused: true };
+    if (existing !== undefined) {
+      let assignmentTransactionId: string | undefined;
+      if (this.options.autoAssign) {
+        const onchainJob = await this.engine.jobs(existing);
+        if (!onchainJob.completed && !onchainJob.assigned) {
+          const assignment = (await this.assignmentEngine.assignJob(existing)) as ContractTransactionResponse;
+          await assignment.wait();
+          assignmentTransactionId = assignment.hash;
+        }
+      }
+      return {
+        offchainJobId: job.id,
+        onchainJobId: existing,
+        transactionId: "reused",
+        assignmentTransactionId,
+        reused: true,
+      };
+    }
 
     const agentId = BigInt(await this.options.resolveAgentId(job.agentId));
     if (agentId < 1n) throw new Error("resolved agentId must be positive");
@@ -62,7 +94,10 @@ export class OnchainJobProvisioner {
     const owner = await this.options.signer.getAddress();
     const allowance = BigInt(await this.token.allowance(owner, this.options.engineAddress));
     if (allowance < reward) {
-      const approval = (await this.token.approve(this.options.engineAddress, this.options.approvalAmount ?? MaxUint256)) as ContractTransactionResponse;
+      const approval = (await this.token.approve(
+        this.options.engineAddress,
+        this.options.approvalAmount ?? MaxUint256,
+      )) as ContractTransactionResponse;
       await approval.wait();
       approvalTransactionId = approval.hash;
     }
@@ -75,10 +110,14 @@ export class OnchainJobProvisioner {
     for (const log of receipt.logs) {
       try {
         const parsed = this.iface.parseLog(log);
-        if (parsed?.name === "JobCreated") { onchainJobId = BigInt(parsed.args[0]); break; }
+        if (parsed?.name === "JobCreated") {
+          onchainJobId = BigInt(parsed.args[0]);
+          break;
+        }
       } catch {}
     }
     if (onchainJobId === undefined) throw new Error("JobCreated event was not found in createJob receipt");
+
     this.options.bindings.set(job.id, onchainJobId);
 
     let assignmentTransactionId: string | undefined;
@@ -88,7 +127,14 @@ export class OnchainJobProvisioner {
       assignmentTransactionId = assignment.hash;
     }
 
-    return { offchainJobId: job.id, onchainJobId, transactionId: transaction.hash, assignmentTransactionId, approvalTransactionId, reused: false };
+    return {
+      offchainJobId: job.id,
+      onchainJobId,
+      transactionId: transaction.hash,
+      assignmentTransactionId,
+      approvalTransactionId,
+      reused: false,
+    };
   }
 
   async resolveOnchainJobId(offchainJobId: string): Promise<bigint> {
