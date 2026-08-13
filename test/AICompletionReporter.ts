@@ -1,13 +1,20 @@
 import { expect } from "chai";
+import { keccak256, toUtf8Bytes } from "ethers";
 import { network } from "hardhat";
+import { canonicalCompletionMessage } from "../agents/ai-jobs/completion-attestation.js";
 
 const { ethers } = await network.connect();
 
+function completionId(agentId: string, jobId: string, taskHash: string, resultHash: string, completedAt: string, signer: string): string {
+  return keccak256(toUtf8Bytes([
+    "AI_HUB_JOB_COMPLETION_V1", jobId, agentId, taskHash, resultHash, completedAt, signer,
+  ].join("\n")));
+}
+
 describe("AICompletionReporter", function () {
   async function deploySystem() {
-    const [owner, developer, attacker] = await ethers.getSigners();
+    const [owner, developer, other] = await ethers.getSigners();
     const ownerAddress = await owner.getAddress();
-
     const token = await ethers.deployContract("MockRewardToken");
     await token.waitForDeployment();
     const runtime = await ethers.deployContract("AIAgentRuntime", [ownerAddress]);
@@ -18,13 +25,12 @@ describe("AICompletionReporter", function () {
     await registry.waitForDeployment();
     const reporter = await ethers.deployContract("AICompletionReporter", [ownerAddress, await engine.getAddress(), await registry.getAddress()]);
     await reporter.waitForDeployment();
-
     await (await registry.setActivityType(ethers.id("AI_JOB_COMPLETED"), true)).wait();
     await (await registry.setReporter(await reporter.getAddress(), true)).wait();
     await (await engine.setCompletionReporter(await reporter.getAddress(), true)).wait();
-    await (await reporter.setCompletionCaller(await owner.getAddress(), true)).wait();
-
-    return { owner, developer, attacker, token, runtime, engine, registry, reporter };
+    await (await reporter.setCompletionCaller(ownerAddress, true)).wait();
+    await (await reporter.setAttester(ownerAddress, true)).wait();
+    return { owner, developer, other, token, runtime, engine, registry, reporter };
   }
 
   async function createAssignedJob(system: Awaited<ReturnType<typeof deploySystem>>) {
@@ -40,30 +46,37 @@ describe("AICompletionReporter", function () {
     await (await engine.connect(owner).assignJob(1)).wait();
   }
 
-  it("atomically completes a job and records verified activity", async function () {
+  async function signedCompletion(system: Awaited<ReturnType<typeof deploySystem>>, resultHash = "RESULT_REPORTER") {
+    const signer = await system.owner.getAddress();
+    const payload = {
+      version: "AI_HUB_JOB_COMPLETION_V1" as const,
+      jobId: "1",
+      agentId: "1",
+      taskHash: "TASK_REPORTER",
+      resultHash,
+      completedAt: "2026-08-13T17:00:00.000Z",
+    };
+    const signature = await system.owner.signMessage(canonicalCompletionMessage(payload));
+    return {
+      ...payload,
+      signature,
+      activityType: ethers.id("AI_JOB_COMPLETED"),
+      projectId: ethers.id("AI_HUB_JOB_PIPELINE"),
+      metadataHash: ethers.id("META_REPORTER"),
+      completionId: completionId(payload.agentId, payload.jobId, payload.taskHash, payload.resultHash, payload.completedAt, signer),
+    };
+  }
+
+  it("verifies a signed completion on-chain and records activity", async function () {
     const system = await deploySystem();
     await createAssignedJob(system);
     const { owner, developer, engine, registry, reporter } = system;
+    const attestation = await signedCompletion(system);
     const developerAddress = await developer.getAddress();
+    const args = [1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId] as const;
 
-    const activityId = await reporter.connect(owner).submitVerifiedCompletion.staticCall(
-      1,
-      ethers.id("RESULT_REPORTER"),
-      ethers.id("AI_JOB_COMPLETED"),
-      ethers.id("AI_HUB_JOB_PIPELINE"),
-      ethers.id("META_REPORTER"),
-      ethers.id("COMPLETION_001"),
-    );
-    expect(activityId).to.equal(1n);
-
-    await (await reporter.connect(owner).submitVerifiedCompletion(
-      1,
-      ethers.id("RESULT_REPORTER"),
-      ethers.id("AI_JOB_COMPLETED"),
-      ethers.id("AI_HUB_JOB_PIPELINE"),
-      ethers.id("META_REPORTER"),
-      ethers.id("COMPLETION_001"),
-    )).wait();
+    expect(await reporter.connect(owner).submitVerifiedCompletion.staticCall(...args)).to.equal(1n);
+    await (await reporter.connect(owner).submitVerifiedCompletion(...args)).wait();
 
     const completed = await engine.jobs(1);
     expect(completed.completed).to.equal(true);
@@ -72,27 +85,51 @@ describe("AICompletionReporter", function () {
     expect(await registry.activityCount(developerAddress)).to.equal(1n);
   });
 
-  it("rejects an unauthorized caller", async function () {
+  it("requires an enabled completion caller", async function () {
     const system = await deploySystem();
     await createAssignedJob(system);
-    const { attacker, reporter } = system;
-
-    await expect(reporter.connect(attacker).submitVerifiedCompletion(
-      1,
-      ethers.id("RESULT_ATTACK"),
-      ethers.id("AI_JOB_COMPLETED"),
-      ethers.id("AI_HUB_JOB_PIPELINE"),
-      ethers.id("META_ATTACK"),
-      ethers.id("COMPLETION_ATTACK"),
+    const { other, reporter } = system;
+    const attestation = await signedCompletion(system, "RESULT_CALLER");
+    await expect(reporter.connect(other).submitVerifiedCompletion(
+      1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt,
+      attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId,
     )).to.be.revertedWithCustomError(reporter, "UnauthorizedCaller");
+  });
+
+  it("requires an enabled attester", async function () {
+    const system = await deploySystem();
+    await createAssignedJob(system);
+    const { owner, other, reporter } = system;
+    const payload = {
+      version: "AI_HUB_JOB_COMPLETION_V1" as const,
+      jobId: "1", agentId: "1", taskHash: "TASK_REPORTER", resultHash: "RESULT_UNTRUSTED", completedAt: "2026-08-13T17:00:00.000Z",
+    };
+    const signature = await other.signMessage(canonicalCompletionMessage(payload));
+    const otherAddress = await other.getAddress();
+    const completion = completionId(payload.agentId, payload.jobId, payload.taskHash, payload.resultHash, payload.completedAt, otherAddress);
+    await expect(reporter.connect(owner).submitVerifiedCompletion(
+      1, payload.agentId, payload.taskHash, payload.resultHash, payload.completedAt, signature,
+      ethers.id("AI_JOB_COMPLETED"), ethers.id("AI_HUB_JOB_PIPELINE"), ethers.id("META_REPORTER"), completion,
+    )).to.be.revertedWithCustomError(reporter, "UnauthorizedAttester");
+  });
+
+  it("rejects a modified signed payload", async function () {
+    const system = await deploySystem();
+    await createAssignedJob(system);
+    const { owner, reporter } = system;
+    const attestation = await signedCompletion(system, "RESULT_ORIGINAL");
+    await expect(reporter.connect(owner).submitVerifiedCompletion(
+      1, attestation.agentId, attestation.taskHash, "RESULT_MODIFIED", attestation.completedAt,
+      attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId,
+    )).to.be.revertedWithCustomError(reporter, "UnauthorizedAttester");
   });
 
   it("rejects replay of the same completion id", async function () {
     const system = await deploySystem();
     await createAssignedJob(system);
     const { owner, reporter } = system;
-    const args = [1, ethers.id("RESULT_REPLAY"), ethers.id("AI_JOB_COMPLETED"), ethers.id("AI_HUB_JOB_PIPELINE"), ethers.id("META_REPLAY"), ethers.id("COMPLETION_REPLAY")] as const;
-
+    const attestation = await signedCompletion(system, "RESULT_REPLAY");
+    const args = [1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId] as const;
     await (await reporter.connect(owner).submitVerifiedCompletion(...args)).wait();
     await expect(reporter.connect(owner).submitVerifiedCompletion(...args)).to.be.revertedWithCustomError(reporter, "CompletionAlreadySubmitted");
   });
