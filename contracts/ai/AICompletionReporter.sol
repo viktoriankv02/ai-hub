@@ -25,19 +25,16 @@ interface IAIAgentEngineCompletion {
 }
 
 interface IActivityRegistryCompletion {
-    function recordActivity(
-        address user,
-        uint256 chainId,
-        bytes32 activityType,
-        bytes32 projectId,
-        bytes32 metadataHash,
-        bool verified
-    ) external returns (uint256 activityId);
+    function recordActivity(address user, uint256 chainId, bytes32 activityType, bytes32 projectId, bytes32 metadataHash, bool verified) external returns (uint256 activityId);
+}
+
+interface IAIJobReceiptRegistry {
+    function recordReceipt(uint256 jobId, uint256 agentId, address jobCreator, address attester, bytes32 taskHash, bytes32 resultHash, bytes32 outputHash, bytes32 metadataHash, uint256 completedAt, bytes32 receiptHash) external;
 }
 
 /// @title AICompletionReporter
-/// @notice Verifies a signed AI-job completion, completes the on-chain job and
-///         emits one canonical verified activity atomically.
+/// @notice Verifies signed AI-job completion, completes the job, records a durable
+///         receipt when configured, and emits one canonical verified activity.
 contract AICompletionReporter is Ownable {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
@@ -45,6 +42,7 @@ contract AICompletionReporter is Ownable {
 
     IAIAgentEngineCompletion public immutable engine;
     IActivityRegistryCompletion public immutable activityRegistry;
+    IAIJobReceiptRegistry public receiptRegistry;
 
     mapping(address => bool) public authorizedCallers;
     mapping(address => bool) public attesters;
@@ -52,15 +50,8 @@ contract AICompletionReporter is Ownable {
 
     event AuthorizedCallerSet(address indexed caller, bool enabled);
     event AttesterSet(address indexed attester, bool enabled);
-    event CompletionReported(
-        uint256 indexed jobId,
-        uint256 indexed agentId,
-        address indexed user,
-        bytes32 resultHash,
-        bytes32 completionId,
-        uint256 activityId,
-        address attester
-    );
+    event ReceiptRegistrySet(address indexed registry);
+    event CompletionReported(uint256 indexed jobId, uint256 indexed agentId, address indexed user, bytes32 resultHash, bytes32 completionId, uint256 activityId, address attester);
 
     error InvalidJob();
     error JobAlreadyCompleted();
@@ -70,18 +61,14 @@ contract AICompletionReporter is Ownable {
     error UnauthorizedAttester();
     error ZeroAddress();
 
-    constructor(address initialOwner, address engineAddress, address activityRegistryAddress)
-        Ownable(initialOwner)
-    {
+    constructor(address initialOwner, address engineAddress, address activityRegistryAddress) Ownable(initialOwner) {
         if (engineAddress == address(0) || activityRegistryAddress == address(0)) revert ZeroAddress();
         engine = IAIAgentEngineCompletion(engineAddress);
         activityRegistry = IActivityRegistryCompletion(activityRegistryAddress);
     }
 
     modifier onlyAuthorizedCaller() {
-        if (msg.sender != owner() && !authorizedCallers[msg.sender]) {
-            revert OwnableUnauthorizedAccount(msg.sender);
-        }
+        if (msg.sender != owner() && !authorizedCallers[msg.sender]) revert OwnableUnauthorizedAccount(msg.sender);
         _;
     }
 
@@ -97,13 +84,13 @@ contract AICompletionReporter is Ownable {
         emit AttesterSet(attester, enabled);
     }
 
-    function completionDigest(
-        uint256 jobId,
-        string calldata agentId,
-        string calldata taskHash,
-        string calldata resultHash,
-        string calldata completedAt
-    ) public pure returns (bytes32) {
+    function setReceiptRegistry(address registry) external onlyOwner {
+        if (registry == address(0)) revert ZeroAddress();
+        receiptRegistry = IAIJobReceiptRegistry(registry);
+        emit ReceiptRegistrySet(registry);
+    }
+
+    function completionDigest(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt) public pure returns (bytes32) {
         bytes32 payloadHash = keccak256(abi.encodePacked(
             "AI_HUB_JOB_COMPLETION_V1\n",
             "jobId=", jobId.toString(), "\n",
@@ -115,22 +102,9 @@ contract AICompletionReporter is Ownable {
         return payloadHash.toEthSignedMessageHash();
     }
 
-    function expectedCompletionId(
-        uint256 jobId,
-        string calldata agentId,
-        string calldata taskHash,
-        string calldata resultHash,
-        string calldata completedAt,
-        address attester
-    ) public pure returns (bytes32) {
+    function expectedCompletionId(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt, address attester) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(
-            "AI_HUB_JOB_COMPLETION_V1", "\n",
-            jobId.toString(), "\n",
-            agentId, "\n",
-            taskHash, "\n",
-            resultHash, "\n",
-            completedAt, "\n",
-            Strings.toHexString(uint160(attester), 20)
+            "AI_HUB_JOB_COMPLETION_V1", "\n", jobId.toString(), "\n", agentId, "\n", taskHash, "\n", resultHash, "\n", completedAt, "\n", Strings.toHexString(uint160(attester), 20)
         ));
     }
 
@@ -147,9 +121,7 @@ contract AICompletionReporter is Ownable {
         bytes32 completionId
     ) external onlyAuthorizedCaller returns (uint256 activityId) {
         if (bytes(resultHash).length == 0) revert EmptyResultHash();
-        if (completionId == bytes32(0) || submittedCompletions[completionId]) {
-            revert CompletionAlreadySubmitted();
-        }
+        if (completionId == bytes32(0) || submittedCompletions[completionId]) revert CompletionAlreadySubmitted();
 
         (
             uint256 idValue,
@@ -165,37 +137,32 @@ contract AICompletionReporter is Ownable {
 
         if (idValue != jobId || !assigned) revert InvalidJob();
         if (completed) revert JobAlreadyCompleted();
-        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) {
-            revert InvalidAttestation();
-        }
+        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
-        if (completionId != expectedCompletionId(jobId, agentId, taskHash, resultHash, completedAt, attester)) {
-            revert InvalidAttestation();
-        }
+        if (completionId != expectedCompletionId(jobId, agentId, taskHash, resultHash, completedAt, attester)) revert InvalidAttestation();
 
         bytes32 onchainResultHash = keccak256(bytes(resultHash));
         submittedCompletions[completionId] = true;
-
         engine.completeJob(jobId, onchainResultHash);
-        activityId = activityRegistry.recordActivity(
-            creator,
-            block.chainid,
-            activityType,
-            projectId,
-            metadataHash,
-            true
-        );
 
-        emit CompletionReported(
-            jobId,
-            agentIdValue,
-            creator,
-            onchainResultHash,
-            completionId,
-            activityId,
-            attester
-        );
+        if (address(receiptRegistry) != address(0)) {
+            receiptRegistry.recordReceipt(
+                jobId,
+                agentIdValue,
+                creator,
+                attester,
+                taskHashValue,
+                onchainResultHash,
+                onchainResultHash,
+                metadataHash,
+                block.timestamp,
+                completionId
+            );
+        }
+
+        activityId = activityRegistry.recordActivity(creator, block.chainid, activityType, projectId, metadataHash, true);
+        emit CompletionReported(jobId, agentIdValue, creator, onchainResultHash, completionId, activityId, attester);
     }
 }
