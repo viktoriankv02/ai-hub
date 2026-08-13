@@ -17,6 +17,7 @@ AI Hub is a multi-chain smart-contract infrastructure project designed to provid
 - AI agent runtime + funded AI job pipeline
 - Off-chain AI job orchestration, persistence, retry and batching
 - Dependency-free local HTTP control plane for AI jobs
+- Atomic AI completion -> verified activity bridge
 
 ### AI agent execution pipeline
 
@@ -24,22 +25,20 @@ AI Hub is a multi-chain smart-contract infrastructure project designed to provid
 AI Agent Runtime
       |
       v
-AIAgentEngine -- ERC20-funded job --> completion reporter
-      |
-      v
-AIJobActivityAdapter
-      |
-      v
-ActivityRegistry
-      |
-      v
-RewardPolicyEngine
-      |
-      v
-EligibilityEngine
-      |
-      v
-Points / Reward modules
+AIAgentEngine -- ERC20-funded job --> AIJobCompletionAdapter
+                                      |
+                                      +--> AIAgentEngine.completeJob()
+                                      |
+                                      +--> ActivityReporter.submit()
+                                                   |
+                                                   v
+                                           ActivityRegistry
+                                                   |
+                                                   v
+                                           RewardPolicyEngine
+                                                   |
+                                                   v
+                                      Eligibility / Points / Rewards
 ```
 
 The important design rule is that **AI jobs are one source of verified activity, not a separate reward system**. A completed job is converted into the same canonical activity format used by other adapters.
@@ -48,11 +47,13 @@ The important design rule is that **AI jobs are one source of verified activity,
 
 - `contracts/ai/AIAgentRuntime.sol` — agent registration, verification, lifecycle state and heartbeat.
 - `contracts/ai/AIAgentEngine.sol` — ERC20-funded job creation, assignment, authorized completion, payout and cancellation.
-- `contracts/adapters/AIJobActivityAdapter.sol` — converts completed verified jobs into `ActivityRegistry` records and prevents duplicate reporting.
+- `contracts/ai/AIJobCompletionAdapter.sol` — atomic completion bridge; it completes the on-chain job and records the verified activity in one transaction.
+- `contracts/core/ActivityReporter.sol` — chain-aware reporter boundary used by the completion adapter.
+- `contracts/core/ActivityRegistry.sol` — canonical verified activity storage.
 
 ### Off-chain AI job control plane
 
-The contracts deliberately stop at the trust boundary. The off-chain layer owns execution lifecycle and can later be exposed through an API without changing the contract interfaces.
+The contracts deliberately stop at the execution trust boundary. The off-chain layer owns execution lifecycle and can later be exposed through an API without changing the contract interfaces.
 
 ```text
 Drop Hunter opportunity
@@ -68,25 +69,31 @@ AIJobRunner -- bounded batch --> AI agent executor
         |
         +--> retry on transient failure
         +--> durable JSON state for local development
-        +--> result hash
+        +--> deterministic result hash
         |
         v
-AIAgentEngine.completeJob()
+AIJobCompletionBridge
         |
         v
-AIJobActivityAdapter.reportCompletedJob()
+AIJobCompletionAdapter
+        |
+        v
+ActivityReporter -> ActivityRegistry
 ```
 
-The first implementation lives under `agents/ai-jobs/`:
+The implementation lives under `agents/ai-jobs/`:
 
 - `orchestrator.ts` — lifecycle, idempotency, retry limits and overlapping-run coalescing.
 - `planner.ts` — converts high-scoring Drop Hunter opportunities into executable job requests.
 - `runner.ts` — drains a bounded queue batch.
 - `json-store.ts` — local durable store with a versioned file format.
 - `executor.ts` — provider boundary plus deterministic dry-run executor.
+- `chain-bridge.ts` — typed Ethers.js bridge from completed off-chain jobs into the atomic on-chain completion adapter.
 - `service.ts` — application service boundary for queue operations.
 - `http-api.ts` — local HTTP control plane.
 - `store.ts` — in-memory implementation for tests.
+
+Detailed trust-boundary design is documented in `docs/AI_RUNTIME_ARCHITECTURE.md`.
 
 ### AI job HTTP API
 
@@ -115,7 +122,7 @@ POST /jobs/:id/cancel
 POST /jobs/drain
 ```
 
-The server uses the durable JSON store at `./data/ai-jobs.json` and the deterministic `DryRunAIExecutor` by default. It does **not** sign wallets or send blockchain transactions.
+The server uses the durable JSON store at `./data/ai-jobs.json` and the deterministic `DryRunAIExecutor` by default. It does **not** sign wallets or send blockchain transactions. Blockchain completion is an explicit next boundary through `AIJobCompletionBridge`.
 
 Optional environment variables:
 
@@ -136,11 +143,9 @@ Authorization: Bearer <token>
 
 The API is intentionally a control-plane boundary. A production deployment can replace the dry-run executor with a real provider adapter without changing the HTTP routes or job lifecycle model.
 
-This mirrors the useful heartbeat/coalescing pattern used by modern agent runtimes while keeping AI Hub's execution semantics tied to its on-chain job and activity pipeline.
-
 ## Drop Hunter
 
-Drop Hunter is the off-chain opportunity intelligence and execution layer. It already supports deterministic scoring, evidence, resilient discovery, execution gates, idempotency receipts, retries and EVM transaction reconciliation.
+Drop Hunter is the off-chain opportunity intelligence and execution layer. It supports deterministic scoring, evidence, resilient discovery, execution gates, idempotency receipts, retries and EVM transaction reconciliation.
 
 Run a normal report:
 
