@@ -1,5 +1,6 @@
 import type { AttestationSigner } from "./completion-attestation.js";
 import { AIJobCompletionBridge, type CompletionBridgeResult, type CompletionAttestationSink } from "./completion-bridge.js";
+import { JsonCompletionPublicationStore, type CompletionPublicationStore } from "./completion-store.js";
 import type { AIJobRecord } from "./types.js";
 import type { OnchainJobProvisioner, OnchainJobProvisioningResult } from "./onchain-job-provisioner.js";
 import type { OnchainRewardSettler, OnchainRewardSettlement } from "./onchain-reward-settler.js";
@@ -10,7 +11,10 @@ export interface OnchainCompletionCoordinatorOptions {
   attestationSigner: AttestationSigner;
   rewardSettler?: OnchainRewardSettler;
   autoSettleReward?: boolean;
+  completionStore?: CompletionPublicationStore;
+  completionStorePath?: string;
 }
+
 export interface OnchainCompletionCoordinatorResult {
   jobId: string;
   provisioning: OnchainJobProvisioningResult;
@@ -20,7 +24,17 @@ export interface OnchainCompletionCoordinatorResult {
 
 export class OnchainCompletionCoordinator {
   private readonly bridge: AIJobCompletionBridge;
-  constructor(private readonly options: OnchainCompletionCoordinatorOptions) { this.bridge = new AIJobCompletionBridge(options.sink); }
+
+  constructor(private readonly options: OnchainCompletionCoordinatorOptions) {
+    const completionStore = options.completionStore ?? (
+      options.completionStorePath
+        ? new JsonCompletionPublicationStore(options.completionStorePath)
+        : undefined
+    );
+    this.bridge = new AIJobCompletionBridge(options.sink, {
+      publicationStore: completionStore,
+    });
+  }
 
   async provision(job: AIJobRecord): Promise<OnchainJobProvisioningResult> {
     if (job.status !== "completed") throw new Error("only completed jobs can be provisioned on-chain");
@@ -38,5 +52,11 @@ export class OnchainCompletionCoordinator {
     return { jobId: job.id, provisioning, completion, rewardSettlement };
   }
 
-  hasSubmitted(jobId: string): boolean { return this.bridge.hasPublished(jobId); }
+  hasSubmitted(jobId: string): boolean {
+    return this.bridge.hasPublished(jobId);
+  }
+
+  getSubmitted(jobId: string): CompletionBridgeResult | undefined {
+    return this.bridge.getPublished(jobId);
+  }
 }
