@@ -74,6 +74,23 @@ contract AICompletionReporter is Ownable {
         return payloadHash.toEthSignedMessageHash();
     }
 
+    function expectedCompletionId(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt, address attester) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(
+            "AI_HUB_JOB_COMPLETION_V1\n",
+            jobId,
+            "\n",
+            agentId,
+            "\n",
+            taskHash,
+            "\n",
+            resultHash,
+            "\n",
+            completedAt,
+            "\n",
+            attester
+        ));
+    }
+
     function submitVerifiedCompletion(
         uint256 jobId,
         string calldata agentId,
@@ -96,6 +113,7 @@ contract AICompletionReporter is Ownable {
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
+        if (completionId != expectedCompletionId(jobId, agentId, taskHash, resultHash, completedAt, attester)) revert InvalidAttestation();
 
         bytes32 onchainResultHash = keccak256(bytes(resultHash));
         submittedCompletions[completionId] = true;
