@@ -5,10 +5,16 @@ const ENGINE_ABI = [
   "function payReward(uint256 jobId) returns (uint256 amount)",
 ];
 
-export interface OnchainRewardSettlement { onchainJobId: bigint; transactionId: string; amount: bigint; }
+export interface OnchainRewardSettlement {
+  onchainJobId: bigint;
+  transactionId: string;
+  amount: bigint;
+  reused: boolean;
+}
 
 export class OnchainRewardSettler {
   private readonly engine: Contract;
+
   constructor(private readonly signer: Signer, engineAddress: string) {
     if (!engineAddress.trim()) throw new Error("engineAddress is required");
     this.engine = new Contract(engineAddress, ENGINE_ABI, signer);
@@ -18,10 +24,14 @@ export class OnchainRewardSettler {
     if (onchainJobId < 1n) throw new Error("onchainJobId must be positive");
     const job = await this.engine.jobs(onchainJobId);
     if (!job.completed) throw new Error("cannot settle reward for incomplete onchain job");
+
     const amount = BigInt(job.reward);
-    if (amount <= 0n) throw new Error("onchain job reward is already settled");
+    if (amount === 0n) {
+      return { onchainJobId, transactionId: "reused", amount: 0n, reused: true };
+    }
+
     const transaction = (await this.engine.payReward(onchainJobId)) as ContractTransactionResponse;
     await transaction.wait();
-    return { onchainJobId, transactionId: transaction.hash, amount };
+    return { onchainJobId, transactionId: transaction.hash, amount, reused: false };
   }
 }
