@@ -9,3 +9,4 @@ export * from "./service.js";
 export * from "./scheduler.js";
 export * from "./json-scheduler-store.js";
 export * from "./http-api.js";
+export * from "./completion-receipt.js";
