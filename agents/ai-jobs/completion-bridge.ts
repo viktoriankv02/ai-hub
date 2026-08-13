@@ -7,6 +7,7 @@ import {
   assertValidCompletionAttestation,
   createCompletionAttestation,
 } from "./completion-attestation.js";
+import type { CompletionPublicationStore } from "./completion-store.js";
 import type { AIJobRecord } from "./types.js";
 
 export interface CompletionAttestationSink {
@@ -20,22 +21,41 @@ export interface CompletionBridgeResult {
   reused: boolean;
 }
 
-/**
- * Trust-boundary adapter between the off-chain AI runtime and an eventual
- * on-chain completion reporter. It owns neither HTTP nor ethers contracts;
- * those concerns are supplied by CompletionAttestationSink.
- */
+export interface AIJobCompletionBridgeOptions {
+  publicationStore?: CompletionPublicationStore;
+}
+
 export class AIJobCompletionBridge {
   private readonly published = new Map<string, CompletionBridgeResult>();
+  private readonly publicationStore?: CompletionPublicationStore;
 
-  constructor(private readonly sink: CompletionAttestationSink) {}
+  constructor(
+    private readonly sink: CompletionAttestationSink,
+    options: AIJobCompletionBridgeOptions = {},
+  ) {
+    this.publicationStore = options.publicationStore;
+  }
 
   async publish(
     job: AIJobRecord,
     signer: AttestationSigner,
   ): Promise<CompletionBridgeResult> {
-    const existing = this.published.get(job.id);
-    if (existing) return { ...existing, reused: true };
+    const memoryResult = this.published.get(job.id);
+    if (memoryResult) return { ...memoryResult, reused: true };
+
+    const stored = this.publicationStore?.get(job.id);
+    if (stored) {
+      const attestation = await createCompletionAttestation(job, signer);
+      assertValidCompletionAttestation(attestation);
+      const result = {
+        jobId: job.id,
+        attestation,
+        transactionId: stored.transactionId,
+        reused: true,
+      };
+      this.published.set(job.id, result);
+      return result;
+    }
 
     const attestation = await createCompletionAttestation(job, signer);
     assertValidCompletionAttestation(attestation);
@@ -49,21 +69,37 @@ export class AIJobCompletionBridge {
       transactionId,
       reused: false,
     };
+
     this.published.set(job.id, result);
+    this.publicationStore?.set({
+      jobId: job.id,
+      transactionId,
+      publishedAt: new Date().toISOString(),
+    });
+
     return result;
   }
 
   hasPublished(jobId: string): boolean {
-    return this.published.has(jobId);
+    return this.published.has(jobId) || this.publicationStore?.get(jobId) !== undefined;
   }
 
   getPublished(jobId: string): CompletionBridgeResult | undefined {
-    const result = this.published.get(jobId);
-    return result ? { ...result, reused: true } : undefined;
+    const memoryResult = this.published.get(jobId);
+    if (memoryResult) return { ...memoryResult, reused: true };
+
+    const stored = this.publicationStore?.get(jobId);
+    if (!stored) return undefined;
+
+    return {
+      jobId,
+      attestation: undefined as unknown as CompletionAttestation,
+      transactionId: stored.transactionId,
+      reused: true,
+    };
   }
 }
 
-/** Deterministic sink useful for local tests and development. */
 export class MemoryCompletionSink implements CompletionAttestationSink {
   readonly submissions: CompletionAttestation[] = [];
 
