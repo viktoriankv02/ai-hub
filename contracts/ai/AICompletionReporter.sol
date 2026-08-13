@@ -15,6 +15,9 @@ interface ICompletionActivityRegistry {
     function recordActivity(address user, uint256 chainId, bytes32 activityType, bytes32 projectId, bytes32 metadataHash, bool verified) external returns (uint256 activityId);
 }
 
+/// @title AICompletionReporter
+/// @notice Verifies signed off-chain AI completion claims and bridges them into
+///         the canonical ActivityRegistry/reward pipeline.
 contract AICompletionReporter is Ownable {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
@@ -62,7 +65,15 @@ contract AICompletionReporter is Ownable {
         emit AttesterSet(attester, enabled);
     }
 
-    function completionDigest(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt) public pure returns (bytes32) {
+    /// @notice Returns the EIP-191 digest signed by the off-chain attester.
+    /// @dev The byte layout is intentionally identical to canonicalCompletionMessage().
+    function completionDigest(
+        uint256 jobId,
+        string calldata agentId,
+        string calldata taskHash,
+        string calldata resultHash,
+        string calldata completedAt
+    ) public pure returns (bytes32) {
         bytes32 payloadHash = keccak256(abi.encodePacked(
             "AI_HUB_JOB_COMPLETION_V1\n",
             "jobId=", jobId.toString(), "\n",
@@ -74,15 +85,25 @@ contract AICompletionReporter is Ownable {
         return payloadHash.toEthSignedMessageHash();
     }
 
-    function expectedCompletionId(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt, address attester) public pure returns (bytes32) {
+    /// @notice Deterministic replay key for one attested completion.
+    /// @dev The attester is encoded as an address, not as a checksummed string,
+    ///      so the value is byte-for-byte stable across Solidity and ethers.
+    function expectedCompletionId(
+        uint256 jobId,
+        string calldata agentId,
+        string calldata taskHash,
+        string calldata resultHash,
+        string calldata completedAt,
+        address attester
+    ) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(
-            "AI_HUB_JOB_COMPLETION_V1", "\n",
+            "AI_HUB_JOB_COMPLETION_V1\n",
             jobId.toString(), "\n",
             agentId, "\n",
             taskHash, "\n",
             resultHash, "\n",
             completedAt, "\n",
-            Strings.toHexString(uint160(attester), 20)
+            attester
         ));
     }
 
@@ -101,19 +122,41 @@ contract AICompletionReporter is Ownable {
         if (bytes(resultHash).length == 0) revert EmptyResultHash();
         if (completionId == bytes32(0) || submittedCompletions[completionId]) revert CompletionAlreadySubmitted();
 
-        (uint256 idValue, address creator, uint256 agentIdValue, bytes32 taskHashValue, , bool assigned, bool completed, , , ) = engine.jobs(jobId);
+        (
+            uint256 idValue,
+            address creator,
+            uint256 agentIdValue,
+            bytes32 taskHashValue,
+            ,
+            bool assigned,
+            bool completed,
+            ,
+            ,
+        ) = engine.jobs(jobId);
+
         if (idValue != jobId || !assigned) revert InvalidJob();
         if (completed) revert JobAlreadyCompleted();
-        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
+        if (bytes(completedAt).length == 0) revert InvalidAttestation();
+        if (keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
+        if (keccak256(bytes(agentId)) != keccak256(bytes(agentIdValue.toString()))) revert InvalidAttestation();
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
-        if (completionId != expectedCompletionId(jobId, agentId, taskHash, resultHash, completedAt, attester)) revert InvalidAttestation();
+        if (completionId != expectedCompletionId(jobId, agentId, taskHash, resultHash, completedAt, attester)) {
+            revert InvalidAttestation();
+        }
 
         bytes32 onchainResultHash = keccak256(bytes(resultHash));
         submittedCompletions[completionId] = true;
         engine.completeJob(jobId, onchainResultHash);
-        activityId = activityRegistry.recordActivity(creator, block.chainid, activityType, projectId, metadataHash, true);
+        activityId = activityRegistry.recordActivity(
+            creator,
+            block.chainid,
+            activityType,
+            projectId,
+            metadataHash,
+            true
+        );
         emit CompletionReported(jobId, agentIdValue, creator, onchainResultHash, completionId, activityId, attester);
     }
 }
