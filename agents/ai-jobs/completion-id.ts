@@ -13,20 +13,24 @@ export function canonicalCompletionId(
   attester: string,
 ): string {
   return solidityPackedKeccak256(
-    ["string", "string", "string", "string", "string", "string", "string", "address"],
+    [
+      "string", "string", "string", "string", "string", "string",
+      "string", "string", "string", "string", "string", "string",
+      "address",
+    ],
     [
       payload.version,
-      "\\n",
+      "\n",
       payload.jobId,
-      "\\n",
+      "\n",
       payload.agentId,
-      "\\n",
+      "\n",
       payload.taskHash,
-      "\\n",
+      "\n",
       payload.resultHash,
-      "\\n",
+      "\n",
       payload.completedAt,
-      "\\n",
+      "\n",
       attester,
     ],
   );
