@@ -34,9 +34,7 @@ export interface MultiChainRuntime {
 function requireTarget(target: MultiChainEVMTarget): void {
   if (!target.id.trim()) throw new Error("chain target id is required");
   if (!target.name.trim()) throw new Error(`chain target '${target.id}' must have a name`);
-  if (!Number.isSafeInteger(target.chainId) || target.chainId <= 0) {
-    throw new Error(`chain target '${target.id}' must have a positive chainId`);
-  }
+  if (!Number.isSafeInteger(target.chainId) || target.chainId <= 0) throw new Error(`chain target '${target.id}' must have a positive chainId`);
   if (!target.rpcUrl.trim()) throw new Error(`chain target '${target.id}' requires rpcUrl`);
   if (!target.privateKey.trim()) throw new Error(`chain target '${target.id}' requires privateKey`);
 }
@@ -51,6 +49,7 @@ function buildRuntime(target: MultiChainEVMTarget): EVMOnchainRuntime {
     rewardTokenAddress: target.rewardTokenAddress,
     completionReporterAddress: target.completionReporterAddress,
     bindingStorePath: target.bindingStorePath ?? `./data/onchain/${target.id}/bindings.json`,
+    completionStorePath: target.completionStorePath ?? `./data/onchain/${target.id}/completions.json`,
     autoAssign: target.autoAssign ?? true,
     autoSettleReward: target.autoSettleReward ?? false,
     activityType: target.activityType ?? "AI_JOB_COMPLETED",
@@ -68,15 +67,13 @@ export function createMultiChainRuntime(options: MultiChainRuntimeOptions): Mult
   for (const target of options.targets) {
     requireTarget(target);
     const runtime = buildRuntime(target);
-    const adapter = new EVMChainExecutionAdapter({ target, coordinator: runtime.coordinator });
-    registry.register(adapter);
+    registry.register(new EVMChainExecutionAdapter({ target, coordinator: runtime.coordinator }));
     runtimes.set(target.id, runtime);
   }
 
   const enabled = registry.list().filter((target) => target.enabled);
   const defaultTarget = options.defaultTarget ?? enabled[0]?.id;
   if (defaultTarget) registry.require(defaultTarget);
-
   return { registry, runtimes, defaultTarget };
 }
 
@@ -93,17 +90,9 @@ export class AIJobMultiChainExecutor {
     return this.runtime.registry.require(id);
   }
 
-  async provision(job: AIJobRecord, targetId?: string) {
-    return this.target(targetId).provision(job);
-  }
-
-  async complete(job: AIJobRecord, targetId?: string) {
-    return this.target(targetId).complete(job);
-  }
-
-  async execute(job: AIJobRecord, targetId?: string) {
-    return this.target(targetId).execute(job);
-  }
+  async provision(job: AIJobRecord, targetId?: string) { return this.target(targetId).provision(job); }
+  async complete(job: AIJobRecord, targetId?: string) { return this.target(targetId).complete(job); }
+  async execute(job: AIJobRecord, targetId?: string) { return this.target(targetId).execute(job); }
 }
 
 export function defaultMultiChainTargetsFromEnv(): MultiChainEVMTarget[] {
@@ -127,17 +116,10 @@ export function defaultMultiChainTargetsFromEnv(): MultiChainEVMTarget[] {
     const privateKey = process.env[`${prefix}_PRIVATE_KEY`]?.trim() ?? process.env.AI_JOB_PRIVATE_KEY?.trim();
     if (!rpcUrl || !engineAddress || !rewardTokenAddress || !reporterAddress || !privateKey) return;
     targets.push({
-      id,
-      name,
-      family: "evm",
-      chainId,
-      rpcUrl,
-      privateKey,
+      id, name, family: "evm", chainId, rpcUrl, privateKey,
       assignmentPrivateKey: process.env[`${prefix}_ASSIGNMENT_PRIVATE_KEY`] ?? process.env.AI_JOB_ASSIGNMENT_PRIVATE_KEY,
       payoutPrivateKey: process.env[`${prefix}_PAYOUT_PRIVATE_KEY`] ?? process.env.AI_JOB_PAYOUT_PRIVATE_KEY,
-      engineAddress,
-      rewardTokenAddress,
-      completionReporterAddress: reporterAddress,
+      engineAddress, rewardTokenAddress, completionReporterAddress: reporterAddress,
       bindingStorePath: `./data/onchain/${id}/bindings.json`,
       completionStorePath: `./data/onchain/${id}/completions.json`,
       autoAssign: process.env.AI_JOB_AUTO_ASSIGN !== "0",
