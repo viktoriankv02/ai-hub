@@ -88,6 +88,7 @@ export function createEVMOnchainRuntime(options: EVMOnchainRuntimeOptions): EVMO
     attestationSigner: signer,
     rewardSettler,
     autoSettleReward: options.autoSettleReward ?? false,
+    completionStorePath: resolve(options.completionStorePath ?? "./data/onchain-job-completions.json"),
   });
 
   return { provider, signer, assignmentSigner, payoutSigner, provisioner, coordinator };
