@@ -26,7 +26,7 @@ type ChatCompletionResponse = {
 };
 
 function normalizeBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\\/+$/, "");
+  const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) throw new Error("AI provider baseUrl is required");
   return trimmed;
 }
