@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type {
   AttestationSigner,
   CompletionAttestation,
@@ -7,7 +8,7 @@ import {
   assertValidCompletionAttestation,
   createCompletionAttestation,
 } from "./completion-attestation.js";
-import type { CompletionPublicationStore } from "./completion-store.js";
+import { JsonCompletionPublicationStore, type CompletionPublicationStore } from "./completion-store.js";
 import type { AIJobRecord } from "./types.js";
 
 export interface CompletionAttestationSink {
@@ -33,7 +34,10 @@ export class AIJobCompletionBridge {
     private readonly sink: CompletionAttestationSink,
     options: AIJobCompletionBridgeOptions = {},
   ) {
-    this.publicationStore = options.publicationStore;
+    const storePath = process.env.AI_JOB_COMPLETION_STORE?.trim();
+    this.publicationStore = options.publicationStore ?? (
+      storePath ? new JsonCompletionPublicationStore(resolve(storePath)) : undefined
+    );
   }
 
   async publish(
