@@ -4,7 +4,7 @@ import { validateDeploymentEnvironment } from "./config/validate";
 import { saveDeployment } from "./utils/deployment";
 
 const target = process.env.AI_HUB_NETWORK?.trim() || "baseSepolia";
-validateDeploymentEnvironment(target);
+validateDeploymentEnvironment(target, { allowMainnet: true });
 const config = EVM_NETWORKS[target];
 if (!config) throw new Error(`Unknown AI_HUB_NETWORK: ${target}`);
 
