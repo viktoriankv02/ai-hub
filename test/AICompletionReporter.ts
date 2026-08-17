@@ -85,6 +85,37 @@ describe("AICompletionReporter", function () {
     expect(await registry.activityCount(developerAddress)).to.equal(1n);
   });
 
+  it("binds the signed agent id to the funded on-chain agent", async function () {
+    const system = await deploySystem();
+    await createAssignedJob(system);
+    const { owner, reporter } = system;
+    const attestation = await signedCompletion(system, "RESULT_AGENT_BINDING");
+    const forgedAgentId = "999";
+    const forgedPayload = { ...attestation, agentId: forgedAgentId };
+    const forgedSignature = await owner.signMessage(canonicalCompletionMessage(forgedPayload));
+    const forgedCompletionId = completionId(
+      forgedPayload.agentId,
+      forgedPayload.jobId,
+      forgedPayload.taskHash,
+      forgedPayload.resultHash,
+      forgedPayload.completedAt,
+      await owner.getAddress(),
+    );
+
+    await expect(reporter.connect(owner).submitVerifiedCompletion(
+      1,
+      forgedPayload.agentId,
+      forgedPayload.taskHash,
+      forgedPayload.resultHash,
+      forgedPayload.completedAt,
+      forgedSignature,
+      forgedPayload.activityType,
+      forgedPayload.projectId,
+      forgedPayload.metadataHash,
+      forgedCompletionId,
+    )).to.be.revertedWithCustomError(reporter, "InvalidAttestation");
+  });
+
   it("requires an enabled completion caller", async function () {
     const system = await deploySystem();
     await createAssignedJob(system);
