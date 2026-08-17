@@ -46,6 +46,22 @@ describe("AI agent job pipeline", function () {
     return { owner, developer, reporter, token, runtime, engine, registry, adapter };
   }
 
+  async function prepareAgent(system: Awaited<ReturnType<typeof deploySystem>>) {
+    const { owner, developer, runtime } = system;
+    await (await runtime.connect(developer).registerAgent("Worker", "endpoint", "metadata", "1.0.0")).wait();
+    await (await runtime.connect(owner).setVerified(1, true)).wait();
+    await (await runtime.connect(developer).startAgent(1)).wait();
+  }
+
+  async function fundAndApprove(
+    system: Awaited<ReturnType<typeof deploySystem>>,
+    amount: bigint,
+  ) {
+    const { developer, token, engine } = system;
+    await (await token.transfer(await developer.getAddress(), amount)).wait();
+    await (await token.connect(developer).approve(await engine.getAddress(), amount)).wait();
+  }
+
   it("registers, verifies and starts an agent", async function () {
     const { owner, developer, runtime } = await deploySystem();
     const developerAddress = await developer.getAddress();
@@ -73,13 +89,10 @@ describe("AI agent job pipeline", function () {
     const developerAddress = await developer.getAddress();
     const reporterAddress = await reporter.getAddress();
 
-    await (await runtime.connect(developer).registerAgent("Worker", "endpoint", "metadata", "1.0.0")).wait();
-    await (await runtime.connect(owner).setVerified(1, true)).wait();
-    await (await runtime.connect(developer).startAgent(1)).wait();
+    await prepareAgent({ owner, developer, reporter, token, runtime, engine } as Awaited<ReturnType<typeof deploySystem>>);
 
     const reward = ethers.parseEther("100");
-    await (await token.transfer(developerAddress, reward)).wait();
-    await (await token.connect(developer).approve(await engine.getAddress(), reward)).wait();
+    await fundAndApprove({ owner, developer, reporter, token, runtime, engine } as Awaited<ReturnType<typeof deploySystem>>, reward);
     await (await engine.connect(developer).createJob(1, ethers.id("TASK_001"), reward)).wait();
 
     const job = await engine.jobs(1);
@@ -93,6 +106,7 @@ describe("AI agent job pipeline", function () {
     const completed = await engine.jobs(1);
     expect(completed.completed).to.equal(true);
     expect(completed.completedAt).to.be.greaterThan(0n);
+    expect(await engine.openJobsByCreator(developerAddress)).to.equal(0n);
     expect(reporterAddress).to.not.equal(developerAddress);
   });
 
@@ -100,13 +114,10 @@ describe("AI agent job pipeline", function () {
     const { owner, developer, reporter, token, runtime, engine, registry, adapter } = await deploySystem();
     const developerAddress = await developer.getAddress();
 
-    await (await runtime.connect(developer).registerAgent("Worker", "endpoint", "metadata", "1.0.0")).wait();
-    await (await runtime.connect(owner).setVerified(1, true)).wait();
-    await (await runtime.connect(developer).startAgent(1)).wait();
+    await prepareAgent({ owner, developer, reporter, token, runtime, engine, registry, adapter } as Awaited<ReturnType<typeof deploySystem>>);
 
     const reward = ethers.parseEther("10");
-    await (await token.transfer(developerAddress, reward)).wait();
-    await (await token.connect(developer).approve(await engine.getAddress(), reward)).wait();
+    await fundAndApprove({ owner, developer, reporter, token, runtime, engine } as Awaited<ReturnType<typeof deploySystem>>, reward);
     await (await engine.connect(developer).createJob(1, ethers.id("TASK_002"), reward)).wait();
     await (await engine.connect(owner).assignJob(1)).wait();
     await (await engine.connect(reporter).completeJob(1, ethers.id("RESULT_002"))).wait();
@@ -128,5 +139,44 @@ describe("AI agent job pipeline", function () {
       adapter,
       "AlreadyReported",
     );
+  });
+
+  it("enforces maximum job reward and open-job exposure", async function () {
+    const system = await deploySystem();
+    const { owner, developer, token, engine } = system;
+    const developerAddress = await developer.getAddress();
+
+    await prepareAgent(system);
+    await fundAndApprove(system, ethers.parseEther("10"));
+    await (await engine.setJobRiskLimits(ethers.parseEther("5"), 0, 1)).wait();
+
+    await expect(
+      engine.connect(developer).createJob(1, ethers.id("TASK_TOO_LARGE"), ethers.parseEther("6")),
+    ).to.be.revertedWithCustomError(engine, "JobRewardTooHigh");
+
+    await (await engine.connect(developer).createJob(1, ethers.id("TASK_OK"), ethers.parseEther("4"))).wait();
+    expect(await engine.openJobsByCreator(developerAddress)).to.equal(1n);
+
+    await expect(
+      engine.connect(developer).createJob(1, ethers.id("TASK_SECOND"), ethers.parseEther("1")),
+    ).to.be.revertedWithCustomError(engine, "TooManyOpenJobs");
+
+    await (await engine.connect(owner).cancelJob(1)).wait();
+    expect(await engine.openJobsByCreator(developerAddress)).to.equal(0n);
+  });
+
+  it("exposes a completion deadline when timeout protection is enabled", async function () {
+    const system = await deploySystem();
+    const { owner, developer, engine } = system;
+
+    await prepareAgent(system);
+    await fundAndApprove(system, ethers.parseEther("1"));
+    await (await engine.setJobRiskLimits(0, 3600, 0)).wait();
+    await (await engine.connect(developer).createJob(1, ethers.id("TASK_DEADLINE"), ethers.parseEther("1"))).wait();
+
+    const job = await engine.jobs(1);
+    expect(await engine.jobExecutionDeadline(1)).to.equal(job.createdAt + 3600n);
+
+    await (await engine.connect(owner).assignJob(1)).wait();
   });
 });
