@@ -105,6 +105,7 @@ contract AICompletionReporter is Ownable {
         if (idValue != jobId || !assigned) revert InvalidJob();
         if (completed) revert JobAlreadyCompleted();
         if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
+        if (keccak256(bytes(agentId)) != keccak256(bytes(agentIdValue.toString()))) revert InvalidAttestation();
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
