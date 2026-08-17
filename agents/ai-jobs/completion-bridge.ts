@@ -49,11 +49,13 @@ export class AIJobCompletionBridge {
 
     const stored = this.publicationStore?.get(job.id);
     if (stored) {
-      const attestation = await createCompletionAttestation(job, signer);
-      assertValidCompletionAttestation(attestation);
-      const result = {
+      if (!stored.attestation) {
+        throw new Error(`completion ${job.id} has a transaction record but no persisted attestation`);
+      }
+      assertValidCompletionAttestation(stored.attestation);
+      const result: CompletionBridgeResult = {
         jobId: job.id,
-        attestation,
+        attestation: stored.attestation,
         transactionId: stored.transactionId,
         reused: true,
       };
@@ -67,7 +69,7 @@ export class AIJobCompletionBridge {
     const transactionId = await this.sink.submit(attestation);
     if (!transactionId.trim()) throw new Error("completion sink returned an empty transaction id");
 
-    const result = {
+    const result: CompletionBridgeResult = {
       jobId: job.id,
       attestation,
       transactionId,
@@ -79,6 +81,7 @@ export class AIJobCompletionBridge {
       jobId: job.id,
       transactionId,
       publishedAt: new Date().toISOString(),
+      attestation,
     });
 
     return result;
@@ -94,10 +97,14 @@ export class AIJobCompletionBridge {
 
     const stored = this.publicationStore?.get(jobId);
     if (!stored) return undefined;
+    if (!stored.attestation) {
+      throw new Error(`completion ${jobId} has a transaction record but no persisted attestation`);
+    }
 
+    assertValidCompletionAttestation(stored.attestation);
     return {
       jobId,
-      attestation: undefined as unknown as CompletionAttestation,
+      attestation: stored.attestation,
       transactionId: stored.transactionId,
       reused: true,
     };
