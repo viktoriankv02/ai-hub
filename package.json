@@ -23,6 +23,7 @@
     "ai-runtime:deploy": "hardhat run deploy/06_deploy_ai_runtime.ts",
     "ai-runtime:configure": "hardhat run deploy/07_configure_ai_runtime.ts",
     "ai-completion:configure": "hardhat run scripts/configure-ai-completion.ts",
+    "ai-completion:status": "tsx scripts/ai-completion-status.ts",
     "base:deploy:testnet": "$env:AI_HUB_NETWORK='baseSepolia'; hardhat run deploy/08_deploy_base_ai_stack.ts",
     "base:deploy:mainnet": "$env:AI_HUB_NETWORK='base'; hardhat run deploy/08_deploy_base_ai_stack.ts",
     "base:status": "tsx scripts/base-stack-status.ts"
