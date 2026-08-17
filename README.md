@@ -25,7 +25,7 @@ AICompletionReporter
 ActivityRegistry
     |
     v
-RewardPolicyEngine -> EligibilityEngine -> Points / Reward
+RewardPolicyEngine -> EligibilityEngine -> Points / RewardVault
 ```
 
 AI jobs remain one source of verified activity rather than a separate reward system. This follows the stronger architecture used by the parallel `arc-ai-hub` project: the job layer feeds the canonical activity/reward pipeline instead of duplicating incentives.
@@ -51,6 +51,9 @@ The first implementation lives under `agents/ai-jobs/`:
 - `onchain-completion-coordinator.ts` — provisions and publishes completed jobs.
 - `onchain-reward-settler.ts` — optional payout-manager reward settlement.
 - `onchain-runtime.ts` — production EVM runtime wiring for the complete pipeline.
+- `multi-chain-runtime.ts` — multiple independent EVM targets with per-chain keys, contracts and durable stores.
+- `multi-chain-service.ts` — chain-aware service facade.
+- `multi-chain-http-api.ts` — chain-aware HTTP control plane.
 - `service.ts` — application service boundary for queue operations.
 - `http-api.ts` — local HTTP control plane.
 
@@ -65,7 +68,7 @@ AI_ONCHAIN_BINDINGS_STORE=./data/onchain-job-bindings.json
 AI_JOB_COMPLETION_STORE=./data/ai-job-completions.json
 ```
 
-The first three stores preserve queue/scheduler/on-chain binding state. The completion store prevents a successful publication from being submitted again after a process restart.
+The queue/scheduler/on-chain binding stores preserve execution state. The completion store prevents a successful publication from being submitted again after a process restart.
 
 Inspect the current local runtime state with:
 
@@ -87,21 +90,16 @@ Default endpoint:
 http://127.0.0.1:8787
 ```
 
-Routes:
+The multi-chain server adds:
 
 ```text
-GET  /health
-GET  /jobs
-POST /jobs
-GET  /jobs/:id
-POST /jobs/:id/run
-POST /jobs/:id/retry
-POST /jobs/:id/cancel
-POST /jobs/:id/provision-onchain
-POST /jobs/:id/submit-onchain
-POST /jobs/:id/run-and-submit
-POST /jobs/drain
+GET  /chains
+POST /jobs/:id/chain/provision
+POST /jobs/:id/chain/complete
+POST /jobs/:id/chain/execute
 ```
+
+`targetId` can be supplied as a query parameter. Otherwise the job's configured chain target or the runtime default is used.
 
 The executor remains `dry-run` by default. Real provider execution and on-chain execution are explicit configuration choices.
 
@@ -161,3 +159,28 @@ npm run ai-jobs:onchain-smoke
 ```
 
 Keep `AI_JOB_AUTO_SETTLE_REWARD=false` until the payout manager is explicitly configured. The default remains conservative: local execution does not spend tokens or send blockchain transactions.
+
+### On-chain risk controls
+
+`AIAgentRuntime` supports an optional heartbeat liveness guard. `heartbeatTimeout=0` disables it; when configured, a verified running agent becomes non-executable after its heartbeat expires until the owner sends another heartbeat.
+
+`AIAgentEngine` supports optional owner-configured safeguards:
+
+```text
+maxJobReward
+completionTimeout
+maxOpenJobsPerCreator
+```
+
+All three default to `0`, meaning disabled. When enabled they limit funded job exposure, bound the lifetime of an executable job and prevent one creator from filling the engine with unlimited open jobs.
+
+`RewardVault` additionally supports:
+
+```text
+maxNativeClaim
+maxERC20Claim
+dailyNativeBudget
+per-token ERC20 daily budgets
+```
+
+These are also disabled by default. The limits are enforced before a reward transfer, while replay protection remains independent through `claimId`.
