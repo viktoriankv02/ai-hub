@@ -20,6 +20,8 @@ contract AICompletionReporter is Ownable {
     using MessageHashUtils for bytes32;
     using Strings for uint256;
 
+    string public constant ATTESTATION_VERSION = "AI_HUB_JOB_COMPLETION_V1";
+
     ICompletionEngine public immutable engine;
     ICompletionActivityRegistry public immutable activityRegistry;
     mapping(address => bool) public completionCallers;
@@ -38,6 +40,7 @@ contract AICompletionReporter is Ownable {
     error InvalidAttestation();
     error EmptyResultHash();
     error ZeroAddress();
+    error InvalidAttestationTimestamp();
 
     constructor(address initialOwner, address engineAddress, address registryAddress) Ownable(initialOwner) {
         if (engineAddress == address(0) || registryAddress == address(0)) revert ZeroAddress();
@@ -64,7 +67,7 @@ contract AICompletionReporter is Ownable {
 
     function completionDigest(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt) public pure returns (bytes32) {
         bytes32 payloadHash = keccak256(abi.encodePacked(
-            "AI_HUB_JOB_COMPLETION_V1\n",
+            ATTESTATION_VERSION, "\n",
             "jobId=", jobId.toString(), "\n",
             "agentId=", agentId, "\n",
             "taskHash=", taskHash, "\n",
@@ -76,7 +79,7 @@ contract AICompletionReporter is Ownable {
 
     function expectedCompletionId(uint256 jobId, string calldata agentId, string calldata taskHash, string calldata resultHash, string calldata completedAt, address attester) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(
-            "AI_HUB_JOB_COMPLETION_V1", "\n",
+            ATTESTATION_VERSION, "\n",
             jobId.toString(), "\n",
             agentId, "\n",
             taskHash, "\n",
@@ -104,8 +107,14 @@ contract AICompletionReporter is Ownable {
         (uint256 idValue, address creator, uint256 agentIdValue, bytes32 taskHashValue, , bool assigned, bool completed, , , ) = engine.jobs(jobId);
         if (idValue != jobId || !assigned) revert InvalidJob();
         if (completed) revert JobAlreadyCompleted();
-        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
+        if (bytes(completedAt).length == 0) revert InvalidAttestation();
         if (keccak256(bytes(agentId)) != keccak256(bytes(agentIdValue.toString()))) revert InvalidAttestation();
+        if (_parseBytes32(taskHash) != taskHashValue) revert InvalidAttestation();
+
+        uint256 attestedAt = _parseUint(completedAt);
+        if (attestedAt == 0 || attestedAt > block.timestamp || block.timestamp - attestedAt > 1 days) {
+            revert InvalidAttestationTimestamp();
+        }
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
@@ -116,5 +125,33 @@ contract AICompletionReporter is Ownable {
         engine.completeJob(jobId, onchainResultHash);
         activityId = activityRegistry.recordActivity(creator, block.chainid, activityType, projectId, metadataHash, true);
         emit CompletionReported(jobId, agentIdValue, creator, onchainResultHash, completionId, activityId, attester);
+    }
+
+    function _parseUint(string memory value) internal pure returns (uint256 result) {
+        bytes memory data = bytes(value);
+        if (data.length == 0) revert InvalidAttestationTimestamp();
+        for (uint256 i = 0; i < data.length; i++) {
+            uint8 digit = uint8(data[i]);
+            if (digit < 48 || digit > 57) revert InvalidAttestationTimestamp();
+            result = result * 10 + (digit - 48);
+        }
+    }
+
+    function _parseBytes32(string memory value) internal pure returns (bytes32 result) {
+        bytes memory data = bytes(value);
+        if (data.length != 66 || data[0] != "0" || (data[1] != "x" && data[1] != "X")) revert InvalidAttestation();
+        for (uint256 i = 0; i < 32; i++) {
+            uint8 high = _hexNibble(uint8(data[2 + i * 2]));
+            uint8 low = _hexNibble(uint8(data[3 + i * 2]));
+            result |= bytes32(uint256(high) << (252 - i * 8));
+            result |= bytes32(uint256(low) << (248 - i * 8));
+        }
+    }
+
+    function _hexNibble(uint8 value) internal pure returns (uint8) {
+        if (value >= 48 && value <= 57) return value - 48;
+        if (value >= 65 && value <= 70) return value - 55;
+        if (value >= 97 && value <= 102) return value - 87;
+        revert InvalidAttestation();
     }
 }
