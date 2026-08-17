@@ -10,9 +10,11 @@ export type DeploymentRecord = {
 };
 
 function deploymentDirectory(): string {
-  const configured = process.env.AI_HUB_DEPLOYMENTS_DIR?.trim();
-  if (configured) return resolve(configured);
-  return resolve(process.env.AI_HUB_DATA_DIR?.trim() || "./deployments", "deployments");
+  const explicit = process.env.AI_HUB_DEPLOYMENTS_DIR?.trim();
+  if (explicit) return resolve(explicit);
+
+  const dataDir = process.env.AI_HUB_DATA_DIR?.trim();
+  return dataDir ? resolve(dataDir, "deployments") : resolve("./deployments");
 }
 
 export async function saveDeployment(record: DeploymentRecord): Promise<void> {
