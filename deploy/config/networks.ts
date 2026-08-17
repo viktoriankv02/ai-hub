@@ -5,16 +5,20 @@ export type EvmNetworkConfig = {
   rpcEnv: string;
   explorerEnv?: string;
   testnet: boolean;
+  priority: number;
+  role: "primary" | "secondary" | "experimental";
 };
 
 export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
-  sepolia: {
-    key: "sepolia",
-    name: "Ethereum Sepolia",
-    chainId: 11155111,
-    rpcEnv: "SEPOLIA_RPC_URL",
-    explorerEnv: "SEPOLIA_EXPLORER_URL",
-    testnet: true,
+  base: {
+    key: "base",
+    name: "Base Mainnet",
+    chainId: 8453,
+    rpcEnv: "BASE_RPC_URL",
+    explorerEnv: "BASE_EXPLORER_URL",
+    testnet: false,
+    priority: 1,
+    role: "primary",
   },
   baseSepolia: {
     key: "baseSepolia",
@@ -23,6 +27,18 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "BASE_SEPOLIA_RPC_URL",
     explorerEnv: "BASE_SEPOLIA_EXPLORER_URL",
     testnet: true,
+    priority: 1,
+    role: "primary",
+  },
+  sepolia: {
+    key: "sepolia",
+    name: "Ethereum Sepolia",
+    chainId: 11155111,
+    rpcEnv: "SEPOLIA_RPC_URL",
+    explorerEnv: "SEPOLIA_EXPLORER_URL",
+    testnet: true,
+    priority: 2,
+    role: "secondary",
   },
   inkSepolia: {
     key: "inkSepolia",
@@ -31,6 +47,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "INK_SEPOLIA_RPC_URL",
     explorerEnv: "INK_SEPOLIA_EXPLORER_URL",
     testnet: true,
+    priority: 1,
+    role: "primary",
   },
   arbitrumSepolia: {
     key: "arbitrumSepolia",
@@ -39,6 +57,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "ARBITRUM_SEPOLIA_RPC_URL",
     explorerEnv: "ARBITRUM_SEPOLIA_EXPLORER_URL",
     testnet: true,
+    priority: 3,
+    role: "secondary",
   },
   optimismSepolia: {
     key: "optimismSepolia",
@@ -47,6 +67,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "OPTIMISM_SEPOLIA_RPC_URL",
     explorerEnv: "OPTIMISM_SEPOLIA_EXPLORER_URL",
     testnet: true,
+    priority: 3,
+    role: "secondary",
   },
   bnbTestnet: {
     key: "bnbTestnet",
@@ -55,6 +77,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "BNB_TESTNET_RPC_URL",
     explorerEnv: "BNB_TESTNET_EXPLORER_URL",
     testnet: true,
+    priority: 4,
+    role: "experimental",
   },
   avalancheFuji: {
     key: "avalancheFuji",
@@ -63,6 +87,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "AVALANCHE_FUJI_RPC_URL",
     explorerEnv: "AVALANCHE_FUJI_EXPLORER_URL",
     testnet: true,
+    priority: 4,
+    role: "experimental",
   },
   polygonAmoy: {
     key: "polygonAmoy",
@@ -71,6 +97,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "POLYGON_AMOY_RPC_URL",
     explorerEnv: "POLYGON_AMOY_EXPLORER_URL",
     testnet: true,
+    priority: 4,
+    role: "experimental",
   },
   plasmaTestnet: {
     key: "plasmaTestnet",
@@ -79,6 +107,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "PLASMA_RPC_URL",
     explorerEnv: "PLASMA_EXPLORER_URL",
     testnet: true,
+    priority: 3,
+    role: "secondary",
   },
   arcTestnet: {
     key: "arcTestnet",
@@ -87,6 +117,8 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "ARC_RPC_URL",
     explorerEnv: "ARC_EXPLORER_URL",
     testnet: true,
+    priority: 2,
+    role: "secondary",
   },
   tempoTestnet: {
     key: "tempoTestnet",
@@ -95,8 +127,12 @@ export const EVM_NETWORKS: Record<string, EvmNetworkConfig> = {
     rpcEnv: "TEMPO_RPC_URL",
     explorerEnv: "TEMPO_EXPLORER_URL",
     testnet: true,
+    priority: 4,
+    role: "experimental",
   },
 };
+
+export const PRIMARY_NETWORK_KEYS = ["baseSepolia", "base", "inkSepolia"] as const;
 
 export function getRpcUrl(key: string): string {
   const config = EVM_NETWORKS[key];
