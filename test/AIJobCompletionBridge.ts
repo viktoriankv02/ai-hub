@@ -85,4 +85,21 @@ describe("AI job completion bridge", function () {
     expect(restored.attestation.resultHash).to.equal(published.attestation.resultHash);
     expect(secondSink.submissions).to.have.length(0);
   });
+
+  it("does not allow a publication transaction to be rebound to another attestation", async function () {
+    const store = new MemoryCompletionPublicationStore();
+    const signer = Wallet.createRandom();
+    const bridge = new AIJobCompletionBridge(new MemoryCompletionSink(), { publicationStore: store });
+    const published = await bridge.publish(completedJob(), signer);
+
+    expect(() => store.set({
+      jobId: published.jobId,
+      transactionId: published.transactionId,
+      publishedAt: new Date().toISOString(),
+      attestation: {
+        ...published.attestation,
+        resultHash: "sha256:forged-result",
+      },
+    })).to.throw("already has a different attestation");
+  });
 });
