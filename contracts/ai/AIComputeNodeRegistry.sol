@@ -61,6 +61,7 @@ contract AIComputeNodeRegistry is Ownable {
     error InvalidStake();
     error ActiveJobsExist();
     error ZeroAddress();
+    error InvalidPage();
 
     constructor(address initialOwner, address token, uint256 minStake) Ownable(initialOwner) {
         if (token == address(0)) revert ZeroAddress();
@@ -211,6 +212,40 @@ contract AIComputeNodeRegistry is Ownable {
 
     function nodeExists(uint256 nodeId) external view returns (bool) {
         return _nodes[nodeId].exists;
+    }
+
+    function nodeCount() external view returns (uint256) {
+        return nextNodeId - 1;
+    }
+
+    function listNodeIds(uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        uint256 count = nodeCount();
+        if (offset > count) revert InvalidPage();
+        if (limit == 0) return new uint256[](0);
+        uint256 end = offset + limit;
+        if (end > count) end = count;
+        ids = new uint256[](end - offset);
+        for (uint256 i = offset; i < end; i++) ids[i - offset] = i + 1;
+    }
+
+    function availableNodeIds(uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        uint256 count = nodeCount();
+        if (offset > count) revert InvalidPage();
+        if (limit == 0) return new uint256[](0);
+        uint256[] memory buffer = new uint256[](limit);
+        uint256 found;
+        uint256 skipped;
+        for (uint256 nodeId = 1; nodeId <= count && found < limit; nodeId++) {
+            if (_nodes[nodeId].exists && _nodes[nodeId].status == NodeStatus.Online) {
+                if (skipped < offset) {
+                    skipped++;
+                } else {
+                    buffer[found++] = nodeId;
+                }
+            }
+        }
+        ids = new uint256[](found);
+        for (uint256 i = 0; i < found; i++) ids[i] = buffer[i];
     }
 
     function isAvailable(uint256 nodeId) external view returns (bool) {
