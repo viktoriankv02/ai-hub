@@ -5,6 +5,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title AIAgentRuntime
 /// @notice Registry and lifecycle controller for AI agents that can execute funded jobs.
+/// @dev Owners remain in control of their own agents while trusted orchestrators can
+///      perform operational lifecycle actions through an explicit controller role.
 contract AIAgentRuntime is Ownable {
     enum AgentStatus {
         Inactive,
@@ -32,23 +34,32 @@ contract AIAgentRuntime is Ownable {
     uint256 public nextAgentId = 1;
     mapping(uint256 => Agent) private _agents;
     mapping(address => uint256[]) private _ownerAgents;
+    mapping(address => bool) public controllers;
 
     event AgentRegistered(uint256 indexed agentId, address indexed owner, string name);
     event AgentVerified(uint256 indexed agentId, bool verified);
     event AgentStatusChanged(uint256 indexed agentId, AgentStatus status);
     event AgentHeartbeat(uint256 indexed agentId, uint256 timestamp);
     event AgentMetadataUpdated(uint256 indexed agentId);
+    event ControllerSet(address indexed controller, bool enabled);
 
     error AgentNotFound();
     error NotAgentOwner();
+    error ZeroAddress();
 
     constructor(address initialOwner) Ownable(initialOwner) {}
 
-    modifier onlyAgentOwner(uint256 agentId) {
+    modifier onlyAgentOperator(uint256 agentId) {
         Agent storage agent = _agents[agentId];
         if (!agent.exists) revert AgentNotFound();
-        if (agent.owner != msg.sender) revert NotAgentOwner();
+        if (agent.owner != msg.sender && !controllers[msg.sender]) revert NotAgentOwner();
         _;
+    }
+
+    function setController(address controller, bool enabled) external onlyOwner {
+        if (controller == address(0)) revert ZeroAddress();
+        controllers[controller] = enabled;
+        emit ControllerSet(controller, enabled);
     }
 
     function registerAgent(
@@ -90,25 +101,25 @@ contract AIAgentRuntime is Ownable {
         emit AgentStatusChanged(agentId, status);
     }
 
-    function startAgent(uint256 agentId) external onlyAgentOwner(agentId) {
+    function startAgent(uint256 agentId) external onlyAgentOperator(agentId) {
         _agents[agentId].status = AgentStatus.Running;
         _agents[agentId].updatedAt = block.timestamp;
         emit AgentStatusChanged(agentId, AgentStatus.Running);
     }
 
-    function pauseAgent(uint256 agentId) external onlyAgentOwner(agentId) {
+    function pauseAgent(uint256 agentId) external onlyAgentOperator(agentId) {
         _agents[agentId].status = AgentStatus.Paused;
         _agents[agentId].updatedAt = block.timestamp;
         emit AgentStatusChanged(agentId, AgentStatus.Paused);
     }
 
-    function stopAgent(uint256 agentId) external onlyAgentOwner(agentId) {
+    function stopAgent(uint256 agentId) external onlyAgentOperator(agentId) {
         _agents[agentId].status = AgentStatus.Stopped;
         _agents[agentId].updatedAt = block.timestamp;
         emit AgentStatusChanged(agentId, AgentStatus.Stopped);
     }
 
-    function heartbeat(uint256 agentId) external onlyAgentOwner(agentId) {
+    function heartbeat(uint256 agentId) external onlyAgentOperator(agentId) {
         _agents[agentId].heartbeatAt = block.timestamp;
         _agents[agentId].updatedAt = block.timestamp;
         emit AgentHeartbeat(agentId, block.timestamp);
@@ -119,7 +130,7 @@ contract AIAgentRuntime is Ownable {
         string calldata endpoint,
         string calldata metadataURI,
         string calldata version
-    ) external onlyAgentOwner(agentId) {
+    ) external onlyAgentOperator(agentId) {
         Agent storage agent = _agents[agentId];
         agent.endpoint = endpoint;
         agent.metadataURI = metadataURI;
