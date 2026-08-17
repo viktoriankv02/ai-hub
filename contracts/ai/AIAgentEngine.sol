@@ -75,8 +75,8 @@ contract AIAgentEngine is Ownable {
         _;
     }
 
-    modifier onlyController() {
-        if (!controllers[msg.sender]) revert NotController();
+    modifier onlyControllerOrOwner() {
+        if (msg.sender != owner() && !controllers[msg.sender]) revert NotController();
         _;
     }
 
@@ -120,7 +120,7 @@ contract AIAgentEngine is Ownable {
         emit JobCreated(jobId, msg.sender, agentId, reward, taskHash);
     }
 
-    function assignJob(uint256 jobId) external onlyController {
+    function assignJob(uint256 jobId) external onlyControllerOrOwner {
         AIJob storage job = jobs[jobId];
         if (job.id != jobId) revert InvalidJob();
         if (job.assigned) revert JobAlreadyAssigned();
