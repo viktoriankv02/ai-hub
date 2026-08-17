@@ -18,6 +18,40 @@ function validateRecord(record: CompletionPublicationRecord): void {
   if (!record.jobId.trim()) throw new Error("jobId is required");
   if (!record.transactionId.trim()) throw new Error("transactionId is required");
   if (!record.publishedAt.trim()) throw new Error("publishedAt is required");
+  if (record.attestation !== undefined) {
+    if (!record.attestation.jobId.trim()) throw new Error("attestation jobId is required");
+    if (!record.attestation.signature.trim()) throw new Error("attestation signature is required");
+    if (!record.attestation.signer.trim()) throw new Error("attestation signer is required");
+    if (record.attestation.jobId !== record.jobId) {
+      throw new Error(`attestation jobId ${record.attestation.jobId} does not match record ${record.jobId}`);
+    }
+  }
+}
+
+function attestationFingerprint(attestation?: CompletionAttestation): string | undefined {
+  if (!attestation) return undefined;
+  return [
+    attestation.version,
+    attestation.jobId,
+    attestation.agentId,
+    attestation.taskHash,
+    attestation.resultHash,
+    attestation.completedAt,
+    attestation.signer,
+    attestation.signature,
+  ].join("\n");
+}
+
+function assertImmutable(existing: CompletionPublicationRecord, next: CompletionPublicationRecord): void {
+  if (existing.transactionId !== next.transactionId) {
+    throw new Error(`completion ${next.jobId} is already published as ${existing.transactionId}`);
+  }
+
+  const existingFingerprint = attestationFingerprint(existing.attestation);
+  const nextFingerprint = attestationFingerprint(next.attestation);
+  if (existingFingerprint !== nextFingerprint) {
+    throw new Error(`completion ${next.jobId} already has a different attestation`);
+  }
 }
 
 export class MemoryCompletionPublicationStore implements CompletionPublicationStore {
@@ -30,9 +64,7 @@ export class MemoryCompletionPublicationStore implements CompletionPublicationSt
   set(record: CompletionPublicationRecord): void {
     validateRecord(record);
     const existing = this.records.get(record.jobId);
-    if (existing && existing.transactionId !== record.transactionId) {
-      throw new Error(`completion ${record.jobId} is already published as ${existing.transactionId}`);
-    }
+    if (existing) assertImmutable(existing, record);
     this.records.set(record.jobId, record);
   }
 }
@@ -52,9 +84,7 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
     validateRecord(record);
 
     const existing = this.records.get(record.jobId);
-    if (existing && existing.transactionId !== record.transactionId) {
-      throw new Error(`completion ${record.jobId} is already published as ${existing.transactionId}`);
-    }
+    if (existing) assertImmutable(existing, record);
 
     this.records.set(record.jobId, record);
     this.persist();
@@ -75,6 +105,8 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
           throw new Error("invalid completion attestation in publication record");
         }
       }
+      const existing = this.records.get(record.jobId);
+      if (existing) assertImmutable(existing, record);
       this.records.set(record.jobId, record);
     }
   }
