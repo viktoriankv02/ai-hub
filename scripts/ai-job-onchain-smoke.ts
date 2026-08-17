@@ -20,6 +20,7 @@ const onchain = createEVMOnchainRuntime({
   rewardTokenAddress,
   completionReporterAddress: reporterAddress,
   bindingStorePath: process.env.AI_ONCHAIN_BINDINGS_STORE ?? "./data/onchain-job-bindings.json",
+  completionStorePath: process.env.AI_JOB_COMPLETION_STORE ?? "./data/ai-job-completions.json",
   autoAssign: true,
   activityType: process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED",
   projectId: process.env.AI_JOB_PROJECT_ID ?? "AI_HUB_JOB_PIPELINE",
@@ -51,4 +52,7 @@ console.log(JSON.stringify({
   provisionTx: result.provisioning.transactionId,
   completionTx: result.completion.transactionId,
   completionId: result.completion.attestation.jobId,
+  attester: result.completion.attestation.signer,
+  taskHash: result.completion.attestation.taskHash,
+  resultHash: result.completion.attestation.resultHash,
 }, null, 2));
