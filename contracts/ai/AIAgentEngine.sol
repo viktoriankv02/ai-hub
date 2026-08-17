@@ -13,8 +13,8 @@ interface IAIAgentRuntime {
 /// @title AIAgentEngine
 /// @notice Creates, assigns and settles funded AI jobs.
 /// @dev Job completion is intentionally separated from reward settlement. A trusted
-///      completion reporter can attest execution; the job owner controls assignment
-///      and the configured payout manager can settle the ERC20 reward.
+///      completion reporter can attest execution; trusted controllers can assign jobs
+///      without giving the orchestrator ownership of the entire protocol.
 contract AIAgentEngine is Ownable {
     using SafeERC20 for IERC20;
 
@@ -38,9 +38,11 @@ contract AIAgentEngine is Ownable {
     mapping(uint256 => AIJob) public jobs;
     mapping(address => bool) public completionReporters;
     mapping(address => bool) public payoutManagers;
+    mapping(address => bool) public controllers;
 
     event CompletionReporterSet(address indexed reporter, bool enabled);
     event PayoutManagerSet(address indexed manager, bool enabled);
+    event ControllerSet(address indexed controller, bool enabled);
     event JobCreated(uint256 indexed jobId, address indexed creator, uint256 indexed agentId, uint256 reward, bytes32 taskHash);
     event JobAssigned(uint256 indexed jobId, uint256 indexed agentId);
     event JobCompleted(uint256 indexed jobId, address indexed reporter, bytes32 resultHash);
@@ -49,10 +51,12 @@ contract AIAgentEngine is Ownable {
 
     error UnauthorizedReporter();
     error UnauthorizedPayoutManager();
+    error NotController();
     error InvalidJob();
     error JobAlreadyAssigned();
     error JobAlreadyCompleted();
     error AgentNotExecutable();
+    error ZeroAddress();
 
     constructor(address initialOwner, address runtimeAddress, address token) Ownable(initialOwner) {
         require(runtimeAddress != address(0), "Agent: zero runtime");
@@ -71,6 +75,11 @@ contract AIAgentEngine is Ownable {
         _;
     }
 
+    modifier onlyController() {
+        if (!controllers[msg.sender]) revert NotController();
+        _;
+    }
+
     function setCompletionReporter(address reporter, bool enabled) external onlyOwner {
         require(reporter != address(0), "Agent: zero reporter");
         completionReporters[reporter] = enabled;
@@ -81,6 +90,12 @@ contract AIAgentEngine is Ownable {
         require(manager != address(0), "Agent: zero manager");
         payoutManagers[manager] = enabled;
         emit PayoutManagerSet(manager, enabled);
+    }
+
+    function setController(address controller, bool enabled) external onlyOwner {
+        if (controller == address(0)) revert ZeroAddress();
+        controllers[controller] = enabled;
+        emit ControllerSet(controller, enabled);
     }
 
     function createJob(uint256 agentId, bytes32 taskHash, uint256 reward) external returns (uint256 jobId) {
@@ -105,7 +120,7 @@ contract AIAgentEngine is Ownable {
         emit JobCreated(jobId, msg.sender, agentId, reward, taskHash);
     }
 
-    function assignJob(uint256 jobId) external onlyOwner {
+    function assignJob(uint256 jobId) external onlyController {
         AIJob storage job = jobs[jobId];
         if (job.id != jobId) revert InvalidJob();
         if (job.assigned) revert JobAlreadyAssigned();
