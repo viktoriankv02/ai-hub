@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { Wallet } from "ethers";
 import { AIJobCompletionBridge, MemoryCompletionSink } from "../agents/ai-jobs/completion-bridge.js";
+import { MemoryCompletionPublicationStore } from "../agents/ai-jobs/completion-store.js";
 import type { AIJobRecord } from "../agents/ai-jobs/types.js";
 
 function completedJob(): AIJobRecord {
@@ -62,5 +63,26 @@ describe("AI job completion bridge", function () {
     expect(stored).to.not.equal(undefined);
     expect(stored?.transactionId).to.equal(published.transactionId);
     expect(stored?.attestation.resultHash).to.equal("sha256:result-bridge");
+  });
+
+  it("restores the full attestation after the bridge is recreated", async function () {
+    const publicationStore = new MemoryCompletionPublicationStore();
+    const firstSink = new MemoryCompletionSink();
+    const signer = Wallet.createRandom();
+    const job = completedJob();
+
+    const firstBridge = new AIJobCompletionBridge(firstSink, { publicationStore });
+    const published = await firstBridge.publish(job, signer);
+
+    const secondSink = new MemoryCompletionSink();
+    const secondBridge = new AIJobCompletionBridge(secondSink, { publicationStore });
+    const restored = await secondBridge.publish(job, signer);
+
+    expect(restored.reused).to.equal(true);
+    expect(restored.transactionId).to.equal(published.transactionId);
+    expect(restored.attestation.signature).to.equal(published.attestation.signature);
+    expect(restored.attestation.signer).to.equal(published.attestation.signer);
+    expect(restored.attestation.resultHash).to.equal(published.attestation.resultHash);
+    expect(secondSink.submissions).to.have.length(0);
   });
 });
