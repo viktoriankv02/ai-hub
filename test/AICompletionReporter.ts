@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { keccak256, toUtf8Bytes } from "ethers";
 import { network } from "hardhat";
-import { canonicalCompletionMessage } from "../agents/ai-jobs/completion-attestation.js";
+import { canonicalCompletionMessage, canonicalTaskHash } from "../agents/ai-jobs/completion-attestation.js";
 
 const { ethers } = await network.connect();
 
@@ -42,10 +42,11 @@ describe("AICompletionReporter", function () {
     const reward = ethers.parseEther("10");
     await (await token.transfer(developerAddress, reward)).wait();
     await (await token.connect(developer).approve(await engine.getAddress(), reward)).wait();
-    const taskHash = ethers.id("TASK_REPORTER");
+    const rawTaskHash = "TASK_REPORTER";
+    const taskHash = canonicalTaskHash(rawTaskHash);
     await (await engine.connect(developer).createJob(1, taskHash, reward)).wait();
     await (await engine.connect(owner).assignJob(1)).wait();
-    return taskHash;
+    return { rawTaskHash, taskHash };
   }
 
   async function signedCompletion(system: Awaited<ReturnType<typeof deploySystem>>, taskHash: string, resultHash = "RESULT_REPORTER") {
@@ -71,7 +72,7 @@ describe("AICompletionReporter", function () {
 
   it("verifies a signed completion on-chain and records activity", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { owner, developer, engine, registry, reporter } = system;
     const attestation = await signedCompletion(system, taskHash);
     const developerAddress = await developer.getAddress();
@@ -89,7 +90,7 @@ describe("AICompletionReporter", function () {
 
   it("binds the signed agent id to the funded on-chain agent", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { owner, reporter } = system;
     const attestation = await signedCompletion(system, taskHash, "RESULT_AGENT_BINDING");
     const forgedAgentId = "999";
@@ -105,7 +106,7 @@ describe("AICompletionReporter", function () {
 
   it("requires an enabled completion caller", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { other, reporter } = system;
     const attestation = await signedCompletion(system, taskHash, "RESULT_CALLER");
     await expect(reporter.connect(other).submitVerifiedCompletion(
@@ -116,7 +117,7 @@ describe("AICompletionReporter", function () {
 
   it("requires an enabled attester", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { owner, other, reporter } = system;
     const payload = {
       version: "AI_HUB_JOB_COMPLETION_V1" as const,
@@ -133,7 +134,7 @@ describe("AICompletionReporter", function () {
 
   it("rejects a modified signed payload", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { owner, reporter } = system;
     const attestation = await signedCompletion(system, taskHash, "RESULT_ORIGINAL");
     await expect(reporter.connect(owner).submitVerifiedCompletion(
@@ -144,7 +145,7 @@ describe("AICompletionReporter", function () {
 
   it("rejects replay of the same completion id", async function () {
     const system = await deploySystem();
-    const taskHash = await createAssignedJob(system);
+    const { taskHash } = await createAssignedJob(system);
     const { owner, reporter } = system;
     const attestation = await signedCompletion(system, taskHash, "RESULT_REPLAY");
     const args = [1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId] as const;
