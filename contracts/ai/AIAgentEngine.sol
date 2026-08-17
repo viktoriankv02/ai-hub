@@ -12,10 +12,8 @@ interface IAIAgentRuntime {
 
 /// @title AIAgentEngine
 /// @notice Creates, assigns and settles funded AI jobs.
-/// @dev Job completion is separated from reward settlement. A trusted completion
-///      reporter can attest execution; the configured payout manager settles the
-///      ERC20 reward. Optional risk limits prevent accidental treasury overexposure
-///      and jobs remaining funded forever.
+/// @dev Job completion is separated from reward settlement. Optional risk limits
+///      protect the treasury from oversized or indefinitely stuck funded jobs.
 contract AIAgentEngine is Ownable {
     using SafeERC20 for IERC20;
 
@@ -52,6 +50,7 @@ contract AIAgentEngine is Ownable {
     event JobCompleted(uint256 indexed jobId, address indexed reporter, bytes32 resultHash);
     event JobRewardPaid(uint256 indexed jobId, address indexed receiver, uint256 amount);
     event JobCancelled(uint256 indexed jobId, uint256 refund);
+    event JobExpired(uint256 indexed jobId, uint256 refund);
 
     error UnauthorizedReporter();
     error UnauthorizedPayoutManager();
@@ -62,6 +61,7 @@ contract AIAgentEngine is Ownable {
     error JobRewardTooHigh();
     error TooManyOpenJobs();
     error JobCompletionExpired();
+    error JobNotExpired();
 
     constructor(address initialOwner, address runtimeAddress, address token) Ownable(initialOwner) {
         require(runtimeAddress != address(0), "Agent: zero runtime");
@@ -129,6 +129,7 @@ contract AIAgentEngine is Ownable {
         if (job.id != jobId) revert InvalidJob();
         if (job.assigned) revert JobAlreadyAssigned();
         if (job.completed) revert JobAlreadyCompleted();
+        if (_isExpired(job)) revert JobCompletionExpired();
         if (!runtime.canExecute(job.agentId)) revert AgentNotExecutable();
         job.assigned = true;
         emit JobAssigned(jobId, job.agentId);
@@ -138,7 +139,7 @@ contract AIAgentEngine is Ownable {
         AIJob storage job = jobs[jobId];
         if (job.id != jobId || !job.assigned) revert InvalidJob();
         if (job.completed) revert JobAlreadyCompleted();
-        if (completionTimeout > 0 && block.timestamp > job.createdAt + completionTimeout) revert JobCompletionExpired();
+        if (_isExpired(job)) revert JobCompletionExpired();
         require(resultHash != bytes32(0), "Agent: empty result");
         job.completed = true;
         job.completedAt = block.timestamp;
@@ -170,11 +171,38 @@ contract AIAgentEngine is Ownable {
         emit JobCancelled(jobId, refund);
     }
 
+    /// @notice Refund an assigned job after its completion deadline.
+    /// @dev This is intentionally permissionless: once the deadline has passed,
+    ///      anyone can release the creator's locked funds instead of relying on
+    ///      the failed agent/reporter process to come back online.
+    function cancelExpiredJob(uint256 jobId) external returns (uint256 refund) {
+        AIJob storage job = jobs[jobId];
+        if (job.id != jobId || !job.assigned || job.completed) revert InvalidJob();
+        if (!_isExpired(job)) revert JobNotExpired();
+
+        refund = job.reward;
+        job.reward = 0;
+        job.assigned = false;
+        _closeOpenJob(job.creator);
+        if (refund > 0) rewardToken.safeTransfer(job.creator, refund);
+        emit JobExpired(jobId, refund);
+    }
+
     function jobExecutionDeadline(uint256 jobId) external view returns (uint256 deadline) {
         AIJob storage job = jobs[jobId];
         if (job.id != jobId) revert InvalidJob();
         if (completionTimeout == 0) return 0;
         return job.createdAt + completionTimeout;
+    }
+
+    function jobExpired(uint256 jobId) external view returns (bool) {
+        AIJob storage job = jobs[jobId];
+        if (job.id != jobId) revert InvalidJob();
+        return _isExpired(job);
+    }
+
+    function _isExpired(AIJob storage job) internal view returns (bool) {
+        return completionTimeout > 0 && block.timestamp > job.createdAt + completionTimeout;
     }
 
     function _closeOpenJob(address creator) internal {
