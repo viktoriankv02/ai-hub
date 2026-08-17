@@ -21,6 +21,7 @@
     "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts",
     "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts",
     "ai-completion:verify": "tsx scripts/ai-completion-verify.ts",
+    "ai-completion:status": "tsx scripts/ai-completion-status.ts",
     "ai-runtime:deploy": "hardhat run deploy/06_deploy_ai_runtime.ts",
     "ai-runtime:configure": "hardhat run deploy/07_configure_ai_runtime.ts",
     "ai-completion:configure": "hardhat run scripts/configure-ai-completion.ts"
