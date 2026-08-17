@@ -48,6 +48,8 @@ const completionReporter = await ethers.deployContract("AICompletionReporter", [
 await completionReporter.waitForDeployment();
 const jobAdapter = await ethers.deployContract("AIJobActivityAdapter", [admin, await engine.getAddress(), await runtime.getAddress(), await activityRegistry.getAddress(), config.chainId, activityType, projectId]);
 await jobAdapter.waitForDeployment();
+const jobGateway = await ethers.deployContract("AIJobGateway", [admin, await engine.getAddress()]);
+await jobGateway.waitForDeployment();
 
 const activityRegistryAddress = await activityRegistry.getAddress();
 const chainRegistryAddress = await chainRegistry.getAddress();
@@ -57,6 +59,7 @@ const runtimeAddress = await runtime.getAddress();
 const engineAddress = await engine.getAddress();
 const completionReporterAddress = await completionReporter.getAddress();
 const jobAdapterAddress = await jobAdapter.getAddress();
+const jobGatewayAddress = await jobGateway.getAddress();
 
 console.log("Configuring trust boundaries...");
 await (await activityRegistry.setActivityType(activityType, true)).wait();
@@ -70,6 +73,7 @@ await (await activityReporter.setSupportedChain(deployer.address, config.chainId
 await (await engine.setCompletionReporter(completionReporterAddress, true)).wait();
 await (await engine.setCompletionReporter(deployer.address, true)).wait();
 await (await engine.setPayoutManager(admin, true)).wait();
+await (await engine.setJobGateway(jobGatewayAddress, true)).wait();
 await (await jobAdapter.setReporter(deployer.address, true)).wait();
 
 const deployment = {
@@ -86,6 +90,7 @@ const deployment = {
     AIAgentEngine: engineAddress,
     AICompletionReporter: completionReporterAddress,
     AIJobActivityAdapter: jobAdapterAddress,
+    AIJobGateway: jobGatewayAddress,
   },
 };
 
