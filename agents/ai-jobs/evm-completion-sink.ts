@@ -40,13 +40,6 @@ function resultHashBytes32(value: string): string {
   return keccak256(toUtf8Bytes(value));
 }
 
-/**
- * Real EVM sink for the completion-attestation bridge.
- *
- * The sink verifies the attestation locally before submitting it. The reporter
- * verifies the same signature again on-chain, so a compromised relayer cannot
- * forge a completion without a configured attester key.
- */
 export class EVMCompletionSink implements CompletionAttestationSink {
   private readonly contract: Contract;
   private readonly options: EVMCompletionSinkOptions;
@@ -59,8 +52,7 @@ export class EVMCompletionSink implements CompletionAttestationSink {
   }
 
   async submit(attestation: CompletionAttestation): Promise<string> {
-    const submission = await this.submitDetailed(attestation);
-    return submission.transactionId;
+    return (await this.submitDetailed(attestation)).transactionId;
   }
 
   async submitDetailed(attestation: CompletionAttestation): Promise<EVMCompletionSubmission> {
@@ -74,6 +66,9 @@ export class EVMCompletionSink implements CompletionAttestationSink {
       ? bytes32(this.options.metadataHash, "metadataHash")
       : keccak256(toUtf8Bytes(attestation.resultHash));
 
+    // The Solidity reporter uses Strings.toHexString(uint160(attester), 20),
+    // which is lowercase. Normalize the off-chain address before deriving the
+    // replay/idempotency key so both sides produce exactly the same value.
     const completionId = keccak256(
       toUtf8Bytes([
         attestation.version,
@@ -82,7 +77,7 @@ export class EVMCompletionSink implements CompletionAttestationSink {
         attestation.taskHash,
         attestation.resultHash,
         attestation.completedAt,
-        attestation.signer,
+        attestation.signer.toLowerCase(),
       ].join("\n")),
     );
 
