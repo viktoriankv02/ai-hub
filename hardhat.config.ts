@@ -6,70 +6,43 @@ export default defineConfig({
   plugins: [hardhatToolboxMochaEthersPlugin],
   solidity: {
     profiles: {
-      default: {
-        version: "0.8.28",
-      },
+      default: { version: "0.8.28" },
       production: {
         version: "0.8.28",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
+        settings: { optimizer: { enabled: true, runs: 200 } },
       },
     },
   },
   networks: {
-    hardhatMainnet: {
-      type: "edr-simulated",
-      chainType: "l1",
-    },
-    hardhatOp: {
-      type: "edr-simulated",
-      chainType: "op",
-    },
+    hardhatMainnet: { type: "edr-simulated", chainType: "l1" },
+    hardhatOp: { type: "edr-simulated", chainType: "op" },
     sepolia: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      chainId: 11155111,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "l1", url: configVariable("SEPOLIA_RPC_URL"),
+      chainId: 11155111, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    base: {
+      type: "http", chainType: "op", url: configVariable("BASE_RPC_URL"),
+      chainId: 8453, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     baseSepolia: {
-      type: "http",
-      chainType: "op",
-      url: configVariable("BASE_SEPOLIA_RPC_URL"),
-      chainId: 84532,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "op", url: configVariable("BASE_SEPOLIA_RPC_URL"),
+      chainId: 84532, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     inkSepolia: {
-      type: "http",
-      chainType: "op",
-      url: configVariable("INK_SEPOLIA_RPC_URL"),
-      chainId: 763373,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "op", url: configVariable("INK_SEPOLIA_RPC_URL"),
+      chainId: 763373, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     plasmaTestnet: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("PLASMA_RPC_URL"),
-      chainId: 9746,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "l1", url: configVariable("PLASMA_RPC_URL"),
+      chainId: 9746, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     arcTestnet: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("ARC_RPC_URL"),
-      chainId: 5042002,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "l1", url: configVariable("ARC_RPC_URL"),
+      chainId: 5042002, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     tempoTestnet: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("TEMPO_RPC_URL"),
-      chainId: 42431,
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      type: "http", chainType: "l1", url: configVariable("TEMPO_RPC_URL"),
+      chainId: 42431, accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
   },
 });

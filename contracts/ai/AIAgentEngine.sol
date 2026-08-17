@@ -12,9 +12,6 @@ interface IAIAgentRuntime {
 
 /// @title AIAgentEngine
 /// @notice Creates, assigns and settles funded AI jobs.
-/// @dev Job completion is intentionally separated from reward settlement. A trusted
-///      completion reporter can attest execution; the job owner controls assignment
-///      and the configured payout manager can settle the ERC20 reward.
 contract AIAgentEngine is Ownable {
     using SafeERC20 for IERC20;
 
@@ -38,9 +35,11 @@ contract AIAgentEngine is Ownable {
     mapping(uint256 => AIJob) public jobs;
     mapping(address => bool) public completionReporters;
     mapping(address => bool) public payoutManagers;
+    mapping(address => bool) public jobGateways;
 
     event CompletionReporterSet(address indexed reporter, bool enabled);
     event PayoutManagerSet(address indexed manager, bool enabled);
+    event JobGatewaySet(address indexed gateway, bool enabled);
     event JobCreated(uint256 indexed jobId, address indexed creator, uint256 indexed agentId, uint256 reward, bytes32 taskHash);
     event JobAssigned(uint256 indexed jobId, uint256 indexed agentId);
     event JobCompleted(uint256 indexed jobId, address indexed reporter, bytes32 resultHash);
@@ -49,6 +48,7 @@ contract AIAgentEngine is Ownable {
 
     error UnauthorizedReporter();
     error UnauthorizedPayoutManager();
+    error UnauthorizedGateway();
     error InvalidJob();
     error JobAlreadyAssigned();
     error JobAlreadyCompleted();
@@ -71,6 +71,11 @@ contract AIAgentEngine is Ownable {
         _;
     }
 
+    modifier onlyGateway() {
+        if (!jobGateways[msg.sender]) revert UnauthorizedGateway();
+        _;
+    }
+
     function setCompletionReporter(address reporter, bool enabled) external onlyOwner {
         require(reporter != address(0), "Agent: zero reporter");
         completionReporters[reporter] = enabled;
@@ -83,16 +88,40 @@ contract AIAgentEngine is Ownable {
         emit PayoutManagerSet(manager, enabled);
     }
 
+    function setJobGateway(address gateway, bool enabled) external onlyOwner {
+        require(gateway != address(0), "Agent: zero gateway");
+        jobGateways[gateway] = enabled;
+        emit JobGatewaySet(gateway, enabled);
+    }
+
     function createJob(uint256 agentId, bytes32 taskHash, uint256 reward) external returns (uint256 jobId) {
+        jobId = _createJob(msg.sender, agentId, taskHash, reward);
+    }
+
+    /// @notice Creates a job on behalf of a user while preserving the user as creator.
+    /// @dev The gateway never receives the reward; transferFrom pulls directly from creator.
+    function createJobFor(address creator, uint256 agentId, bytes32 taskHash, uint256 reward)
+        external
+        onlyGateway
+        returns (uint256 jobId)
+    {
+        require(creator != address(0), "Agent: zero creator");
+        jobId = _createJob(creator, agentId, taskHash, reward);
+    }
+
+    function _createJob(address creator, uint256 agentId, bytes32 taskHash, uint256 reward)
+        internal
+        returns (uint256 jobId)
+    {
         require(taskHash != bytes32(0), "Agent: empty task");
         require(reward > 0, "Agent: zero reward");
         if (!runtime.canExecute(agentId)) revert AgentNotExecutable();
 
-        rewardToken.safeTransferFrom(msg.sender, address(this), reward);
+        rewardToken.safeTransferFrom(creator, address(this), reward);
         jobId = nextJobId++;
         jobs[jobId] = AIJob({
             id: jobId,
-            creator: msg.sender,
+            creator: creator,
             agentId: agentId,
             taskHash: taskHash,
             reward: reward,
@@ -102,7 +131,7 @@ contract AIAgentEngine is Ownable {
             completedAt: 0,
             resultHash: bytes32(0)
         });
-        emit JobCreated(jobId, msg.sender, agentId, reward, taskHash);
+        emit JobCreated(jobId, creator, agentId, reward, taskHash);
     }
 
     function assignJob(uint256 jobId) external onlyOwner {

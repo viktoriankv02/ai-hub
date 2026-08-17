@@ -9,14 +9,22 @@ export type DeploymentRecord = {
   contracts: Record<string, string>;
 };
 
+function deploymentDirectory(): string {
+  const explicit = process.env.AI_HUB_DEPLOYMENTS_DIR?.trim();
+  if (explicit) return resolve(explicit);
+
+  const dataDir = process.env.AI_HUB_DATA_DIR?.trim();
+  return dataDir ? resolve(dataDir, "deployments") : resolve("./deployments");
+}
+
 export async function saveDeployment(record: DeploymentRecord): Promise<void> {
-  const path = resolve(process.cwd(), "deployments", `${record.network}.json`);
+  const path = resolve(deploymentDirectory(), `${record.network}.json`);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(record, null, 2) + "\n", "utf8");
 }
 
 export async function loadDeployment(network: string): Promise<DeploymentRecord> {
-  const path = resolve(process.cwd(), "deployments", `${network}.json`);
+  const path = resolve(deploymentDirectory(), `${network}.json`);
   const data = await readFile(path, "utf8");
   return JSON.parse(data) as DeploymentRecord;
 }
