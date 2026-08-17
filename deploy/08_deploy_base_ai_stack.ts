@@ -20,8 +20,10 @@ const vmType = ethers.id("EVM");
 const chainName = ethers.id(config.name);
 const deployMockToken = target !== "base" && (process.env.AI_DEPLOY_TEST_REWARD_TOKEN ?? "true") !== "false";
 const configuredRewardToken = process.env.AI_REWARD_TOKEN_ADDRESS?.trim();
+const minimumComputeStake = BigInt(process.env.AI_COMPUTE_MINIMUM_STAKE?.trim() || ethers.parseEther("1").toString());
 
 if (target === "base" && !configuredRewardToken) throw new Error("Base mainnet requires AI_REWARD_TOKEN_ADDRESS");
+if (minimumComputeStake < 0n) throw new Error("AI_COMPUTE_MINIMUM_STAKE cannot be negative");
 
 console.log(`AI Hub stack: ${config.name} (${config.chainId})`);
 console.log(`Admin: ${admin}`);
@@ -50,6 +52,10 @@ const jobAdapter = await ethers.deployContract("AIJobActivityAdapter", [admin, a
 await jobAdapter.waitForDeployment();
 const jobGateway = await ethers.deployContract("AIJobGateway", [admin, await engine.getAddress()]);
 await jobGateway.waitForDeployment();
+const computeNodes = await ethers.deployContract("AIComputeNodeRegistry", [admin, rewardToken, minimumComputeStake]);
+await computeNodes.waitForDeployment();
+const computeCoordinator = await ethers.deployContract("AIJobComputeCoordinator", [admin, await engine.getAddress(), await computeNodes.getAddress()]);
+await computeCoordinator.waitForDeployment();
 
 const activityRegistryAddress = await activityRegistry.getAddress();
 const chainRegistryAddress = await chainRegistry.getAddress();
@@ -60,6 +66,8 @@ const engineAddress = await engine.getAddress();
 const completionReporterAddress = await completionReporter.getAddress();
 const jobAdapterAddress = await jobAdapter.getAddress();
 const jobGatewayAddress = await jobGateway.getAddress();
+const computeNodesAddress = await computeNodes.getAddress();
+const computeCoordinatorAddress = await computeCoordinator.getAddress();
 
 console.log("Configuring trust boundaries...");
 await (await activityRegistry.setActivityType(activityType, true)).wait();
@@ -74,6 +82,10 @@ await (await engine.setCompletionReporter(completionReporterAddress, true)).wait
 await (await engine.setCompletionReporter(deployer.address, true)).wait();
 await (await engine.setPayoutManager(admin, true)).wait();
 await (await engine.setJobGateway(jobGatewayAddress, true)).wait();
+await (await engine.setController(admin, true)).wait();
+await (await runtime.setController(admin, true)).wait();
+await (await computeNodes.setController(computeCoordinatorAddress, true)).wait();
+await (await computeCoordinator.setController(admin, true)).wait();
 await (await jobAdapter.setReporter(deployer.address, true)).wait();
 
 const deployment = {
@@ -91,6 +103,11 @@ const deployment = {
     AICompletionReporter: completionReporterAddress,
     AIJobActivityAdapter: jobAdapterAddress,
     AIJobGateway: jobGatewayAddress,
+    AIComputeNodeRegistry: computeNodesAddress,
+    AIJobComputeCoordinator: computeCoordinatorAddress,
+  },
+  compute: {
+    minimumStake: minimumComputeStake.toString(),
   },
 };
 
