@@ -19,6 +19,7 @@
     "ai-jobs:status": "tsx scripts/ai-job-status.ts",
     "ai-jobs:worker": "tsx scripts/ai-job-worker.ts",
     "ai-jobs:provider-smoke": "tsx scripts/ai-provider-smoke.ts",
+    "ai-jobs:compute:plan": "tsx scripts/ai-job-compute-plan-once.ts",
     "ai-completion:deploy": "hardhat run scripts/deploy-ai-completion-reporter.ts",
     "ai-runtime:deploy": "hardhat run deploy/06_deploy_ai_runtime.ts",
     "ai-runtime:configure": "hardhat run deploy/07_configure_ai_runtime.ts",
