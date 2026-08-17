@@ -6,13 +6,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @title AIAgentRuntime
 /// @notice Registry and lifecycle controller for AI agents that can execute funded jobs.
 contract AIAgentRuntime is Ownable {
-    enum AgentStatus {
-        Inactive,
-        Running,
-        Paused,
-        Stopped,
-        Slashed
-    }
+    enum AgentStatus { Inactive, Running, Paused, Stopped, Slashed }
 
     struct Agent {
         uint256 id;
@@ -30,6 +24,7 @@ contract AIAgentRuntime is Ownable {
     }
 
     uint256 public nextAgentId = 1;
+    uint256 public heartbeatTimeout;
     mapping(uint256 => Agent) private _agents;
     mapping(address => uint256[]) private _ownerAgents;
 
@@ -38,6 +33,7 @@ contract AIAgentRuntime is Ownable {
     event AgentStatusChanged(uint256 indexed agentId, AgentStatus status);
     event AgentHeartbeat(uint256 indexed agentId, uint256 timestamp);
     event AgentMetadataUpdated(uint256 indexed agentId);
+    event HeartbeatTimeoutUpdated(uint256 timeout);
 
     error AgentNotFound();
     error NotAgentOwner();
@@ -51,12 +47,7 @@ contract AIAgentRuntime is Ownable {
         _;
     }
 
-    function registerAgent(
-        string calldata name,
-        string calldata endpoint,
-        string calldata metadataURI,
-        string calldata version
-    ) external returns (uint256 agentId) {
+    function registerAgent(string calldata name, string calldata endpoint, string calldata metadataURI, string calldata version) external returns (uint256 agentId) {
         agentId = nextAgentId++;
         _agents[agentId] = Agent({
             id: agentId,
@@ -76,6 +67,11 @@ contract AIAgentRuntime is Ownable {
         emit AgentRegistered(agentId, msg.sender, name);
     }
 
+    function setHeartbeatTimeout(uint256 timeout) external onlyOwner {
+        heartbeatTimeout = timeout;
+        emit HeartbeatTimeoutUpdated(timeout);
+    }
+
     function setVerified(uint256 agentId, bool verified) external onlyOwner {
         if (!_agents[agentId].exists) revert AgentNotFound();
         _agents[agentId].verified = verified;
@@ -92,8 +88,10 @@ contract AIAgentRuntime is Ownable {
 
     function startAgent(uint256 agentId) external onlyAgentOwner(agentId) {
         _agents[agentId].status = AgentStatus.Running;
+        _agents[agentId].heartbeatAt = block.timestamp;
         _agents[agentId].updatedAt = block.timestamp;
         emit AgentStatusChanged(agentId, AgentStatus.Running);
+        emit AgentHeartbeat(agentId, block.timestamp);
     }
 
     function pauseAgent(uint256 agentId) external onlyAgentOwner(agentId) {
@@ -114,12 +112,7 @@ contract AIAgentRuntime is Ownable {
         emit AgentHeartbeat(agentId, block.timestamp);
     }
 
-    function updateMetadata(
-        uint256 agentId,
-        string calldata endpoint,
-        string calldata metadataURI,
-        string calldata version
-    ) external onlyAgentOwner(agentId) {
+    function updateMetadata(uint256 agentId, string calldata endpoint, string calldata metadataURI, string calldata version) external onlyAgentOwner(agentId) {
         Agent storage agent = _agents[agentId];
         agent.endpoint = endpoint;
         agent.metadataURI = metadataURI;
@@ -128,9 +121,7 @@ contract AIAgentRuntime is Ownable {
         emit AgentMetadataUpdated(agentId);
     }
 
-    function ownerAgents(address owner) external view returns (uint256[] memory) {
-        return _ownerAgents[owner];
-    }
+    function ownerAgents(address owner) external view returns (uint256[] memory) { return _ownerAgents[owner]; }
 
     function agentOwner(uint256 agentId) external view returns (address) {
         if (!_agents[agentId].exists) revert AgentNotFound();
@@ -142,17 +133,28 @@ contract AIAgentRuntime is Ownable {
         return _agents[agentId].verified;
     }
 
-    function agentExists(uint256 agentId) external view returns (bool) {
-        return _agents[agentId].exists;
-    }
+    function agentExists(uint256 agentId) external view returns (bool) { return _agents[agentId].exists; }
 
     function agentStatus(uint256 agentId) external view returns (AgentStatus) {
         if (!_agents[agentId].exists) revert AgentNotFound();
         return _agents[agentId].status;
     }
 
+    function agentHeartbeatAt(uint256 agentId) external view returns (uint256) {
+        if (!_agents[agentId].exists) revert AgentNotFound();
+        return _agents[agentId].heartbeatAt;
+    }
+
+    function heartbeatDeadline(uint256 agentId) external view returns (uint256) {
+        if (!_agents[agentId].exists) revert AgentNotFound();
+        if (heartbeatTimeout == 0) return 0;
+        return _agents[agentId].heartbeatAt + heartbeatTimeout;
+    }
+
     function canExecute(uint256 agentId) external view returns (bool) {
         Agent storage agent = _agents[agentId];
-        return agent.exists && agent.verified && agent.status == AgentStatus.Running;
+        if (!agent.exists || !agent.verified || agent.status != AgentStatus.Running) return false;
+        if (heartbeatTimeout > 0 && block.timestamp > agent.heartbeatAt + heartbeatTimeout) return false;
+        return true;
     }
 }
