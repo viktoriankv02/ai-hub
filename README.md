@@ -44,8 +44,8 @@ The first implementation lives under `agents/ai-jobs/`:
 - `runtime.ts` — selects the safe dry-run executor or a configured real provider.
 - `providers/openai-compatible.ts` — dependency-free adapter for OpenAI-compatible `/chat/completions` APIs.
 - `completion-attestation.ts` — deterministic completion payload and signed attestation.
-- `completion-bridge.ts` — trust-boundary publication bridge with optional durable publication state.
-- `completion-store.ts` — memory/JSON persistence for published transaction ids.
+- `completion-bridge.ts` — trust-boundary publication bridge with restart-safe replay handling.
+- `completion-store.ts` — memory/JSON persistence for complete publication records and immutable transaction/attestation binding.
 - `onchain-job-bindings.ts` — persistent mapping between off-chain and funded on-chain jobs.
 - `onchain-job-provisioner.ts` — ERC20 funding, on-chain job creation and optional assignment.
 - `onchain-completion-coordinator.ts` — provisions and publishes completed jobs.
@@ -68,13 +68,21 @@ AI_ONCHAIN_BINDINGS_STORE=./data/onchain-job-bindings.json
 AI_JOB_COMPLETION_STORE=./data/ai-job-completions.json
 ```
 
-The queue/scheduler/on-chain binding stores preserve execution state. The completion store prevents a successful publication from being submitted again after a process restart.
+The queue/scheduler/on-chain binding stores preserve execution state. The completion store preserves the full signed attestation together with its transaction id and rejects attempts to rebind an already-published job to different signed data.
 
 Inspect the current local runtime state with:
 
 ```bash
-npx tsx scripts/ai-job-status.ts
+npm run ai-jobs:status
 ```
+
+Verify a persisted completion after a process restart:
+
+```bash
+npm run ai-completion:verify -- <jobId>
+```
+
+The verifier checks that the stored attestation is cryptographically valid and still matches the persisted completed job before reporting it as verified.
 
 ## AI job HTTP API
 
@@ -160,6 +168,17 @@ npm run ai-jobs:onchain-smoke
 
 Keep `AI_JOB_AUTO_SETTLE_REWARD=false` until the payout manager is explicitly configured. The default remains conservative: local execution does not spend tokens or send blockchain transactions.
 
+### Completion attestation security
+
+The reporter does not trust a caller merely because the caller can reach the contract. It requires both:
+
+1. an enabled completion caller/relayer;
+2. a valid signature from an enabled attester.
+
+The signed `agentId` is additionally checked against the funded on-chain job's actual agent id. This prevents an authorized attester from signing a completion for a different agent identity while still targeting the correct funded job.
+
+Completion ids are deterministic and include the attestation signer, while the durable publication store binds the first successful transaction id to the exact signed payload. A restart therefore cannot silently replace the attestation associated with an already published job.
+
 ### On-chain risk controls
 
 `AIAgentRuntime` supports an optional heartbeat liveness guard. `heartbeatTimeout=0` disables it; when configured, a verified running agent becomes non-executable after its heartbeat expires until the owner sends another heartbeat.
@@ -173,6 +192,8 @@ maxOpenJobsPerCreator
 ```
 
 All three default to `0`, meaning disabled. When enabled they limit funded job exposure, bound the lifetime of an executable job and prevent one creator from filling the engine with unlimited open jobs.
+
+Expired assigned jobs can be cancelled permissionlessly with the creator's funds refunded, instead of remaining locked forever if an agent or reporter disappears.
 
 `RewardVault` additionally supports:
 
