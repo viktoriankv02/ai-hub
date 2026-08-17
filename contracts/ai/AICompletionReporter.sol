@@ -40,7 +40,6 @@ contract AICompletionReporter is Ownable {
     error InvalidAttestation();
     error EmptyResultHash();
     error ZeroAddress();
-    error InvalidAttestationTimestamp();
 
     constructor(address initialOwner, address engineAddress, address registryAddress) Ownable(initialOwner) {
         if (engineAddress == address(0) || registryAddress == address(0)) revert ZeroAddress();
@@ -102,19 +101,14 @@ contract AICompletionReporter is Ownable {
         bytes32 completionId
     ) external onlyCompletionCaller returns (uint256 activityId) {
         if (bytes(resultHash).length == 0) revert EmptyResultHash();
+        if (bytes(completedAt).length == 0) revert InvalidAttestation();
         if (completionId == bytes32(0) || submittedCompletions[completionId]) revert CompletionAlreadySubmitted();
 
         (uint256 idValue, address creator, uint256 agentIdValue, bytes32 taskHashValue, , bool assigned, bool completed, , , ) = engine.jobs(jobId);
         if (idValue != jobId || !assigned) revert InvalidJob();
         if (completed) revert JobAlreadyCompleted();
-        if (bytes(completedAt).length == 0) revert InvalidAttestation();
         if (keccak256(bytes(agentId)) != keccak256(bytes(agentIdValue.toString()))) revert InvalidAttestation();
         if (_parseBytes32(taskHash) != taskHashValue) revert InvalidAttestation();
-
-        uint256 attestedAt = _parseUint(completedAt);
-        if (attestedAt == 0 || attestedAt > block.timestamp || block.timestamp - attestedAt > 1 days) {
-            revert InvalidAttestationTimestamp();
-        }
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
@@ -125,16 +119,6 @@ contract AICompletionReporter is Ownable {
         engine.completeJob(jobId, onchainResultHash);
         activityId = activityRegistry.recordActivity(creator, block.chainid, activityType, projectId, metadataHash, true);
         emit CompletionReported(jobId, agentIdValue, creator, onchainResultHash, completionId, activityId, attester);
-    }
-
-    function _parseUint(string memory value) internal pure returns (uint256 result) {
-        bytes memory data = bytes(value);
-        if (data.length == 0) revert InvalidAttestationTimestamp();
-        for (uint256 i = 0; i < data.length; i++) {
-            uint8 digit = uint8(data[i]);
-            if (digit < 48 || digit > 57) revert InvalidAttestationTimestamp();
-            result = result * 10 + (digit - 48);
-        }
     }
 
     function _parseBytes32(string memory value) internal pure returns (bytes32 result) {
