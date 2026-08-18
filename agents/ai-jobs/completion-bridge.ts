@@ -43,6 +43,7 @@ export class AIJobCompletionBridge {
   async publish(
     job: AIJobRecord,
     signer: AttestationSigner,
+    onchainJobId?: bigint | number | string,
   ): Promise<CompletionBridgeResult> {
     const memoryResult = this.published.get(job.id);
     if (memoryResult) return { ...memoryResult, reused: true };
@@ -53,6 +54,9 @@ export class AIJobCompletionBridge {
         throw new Error(`completion ${job.id} has a transaction record but no persisted attestation`);
       }
       assertValidCompletionAttestation(stored.attestation);
+      if (onchainJobId !== undefined && stored.attestation.onchainJobId !== String(onchainJobId)) {
+        throw new Error(`completion ${job.id} is already bound to on-chain job ${stored.attestation.onchainJobId}`);
+      }
       const result: CompletionBridgeResult = {
         jobId: job.id,
         attestation: stored.attestation,
@@ -63,7 +67,7 @@ export class AIJobCompletionBridge {
       return result;
     }
 
-    const attestation = await createCompletionAttestation(job, signer);
+    const attestation = await createCompletionAttestation(job, signer, onchainJobId);
     assertValidCompletionAttestation(attestation);
 
     const transactionId = await this.sink.submit(attestation);
@@ -124,6 +128,7 @@ export function attestationPayload(attestation: CompletionAttestation): Completi
   return {
     version: attestation.version,
     jobId: attestation.jobId,
+    onchainJobId: attestation.onchainJobId,
     agentId: attestation.agentId,
     taskHash: attestation.taskHash,
     resultHash: attestation.resultHash,
