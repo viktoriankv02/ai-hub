@@ -6,6 +6,8 @@ export const COMPLETION_ATTESTATION_VERSION = "AI_HUB_JOB_COMPLETION_V1";
 export interface CompletionAttestationPayload {
   version: typeof COMPLETION_ATTESTATION_VERSION;
   jobId: string;
+  /** Optional numeric on-chain job id. When present, it is the value signed for EVM settlement. */
+  onchainJobId?: string;
   agentId: string;
   taskHash: string;
   resultHash: string;
@@ -28,10 +30,19 @@ export function canonicalTaskHash(taskHash: string): string {
   return isHexString(value, 32) ? value : id(value);
 }
 
+export function canonicalOnchainJobId(value: bigint | number | string): string {
+  const normalized = typeof value === "bigint" ? value.toString() : String(value).trim();
+  if (!/^\d+$/.test(normalized) || BigInt(normalized) < 1n) {
+    throw new Error("onchainJobId must be a positive integer");
+  }
+  return normalized;
+}
+
 export function canonicalCompletionMessage(payload: CompletionAttestationPayload): string {
+  const signedJobId = payload.onchainJobId?.trim() || payload.jobId;
   return [
     payload.version,
-    `jobId=${payload.jobId}`,
+    `jobId=${signedJobId}`,
     `agentId=${payload.agentId}`,
     `taskHash=${payload.taskHash}`,
     `resultHash=${payload.resultHash}`,
@@ -39,7 +50,10 @@ export function canonicalCompletionMessage(payload: CompletionAttestationPayload
   ].join("\n");
 }
 
-export function payloadFromJob(job: AIJobRecord): CompletionAttestationPayload {
+export function payloadFromJob(
+  job: AIJobRecord,
+  onchainJobId?: bigint | number | string,
+): CompletionAttestationPayload {
   if (job.status !== "completed") throw new Error("only completed jobs can be attested");
   if (!job.resultHash) throw new Error("completed job has no resultHash");
   if (!job.completedAt) throw new Error("completed job has no completedAt timestamp");
@@ -47,6 +61,7 @@ export function payloadFromJob(job: AIJobRecord): CompletionAttestationPayload {
   return {
     version: COMPLETION_ATTESTATION_VERSION,
     jobId: job.id,
+    onchainJobId: onchainJobId === undefined ? undefined : canonicalOnchainJobId(onchainJobId),
     agentId: job.agentId,
     taskHash: canonicalTaskHash(job.taskHash),
     resultHash: job.resultHash,
@@ -57,8 +72,9 @@ export function payloadFromJob(job: AIJobRecord): CompletionAttestationPayload {
 export async function createCompletionAttestation(
   job: AIJobRecord,
   signer: AttestationSigner,
+  onchainJobId?: bigint | number | string,
 ): Promise<CompletionAttestation> {
-  const payload = payloadFromJob(job);
+  const payload = payloadFromJob(job, onchainJobId);
   const signature = await signer.signMessage(canonicalCompletionMessage(payload));
   const signerAddress = getAddress(await signer.getAddress());
 
@@ -70,10 +86,14 @@ export async function createCompletionAttestation(
 }
 
 export function verifyCompletionAttestation(attestation: CompletionAttestation): boolean {
-  const recovered = getAddress(
-    verifyMessage(canonicalCompletionMessage(attestation), attestation.signature),
-  );
-  return recovered === getAddress(attestation.signer);
+  try {
+    const recovered = getAddress(
+      verifyMessage(canonicalCompletionMessage(attestation), attestation.signature),
+    );
+    return recovered === getAddress(attestation.signer);
+  } catch {
+    return false;
+  }
 }
 
 export function assertValidCompletionAttestation(attestation: CompletionAttestation): void {
@@ -81,6 +101,7 @@ export function assertValidCompletionAttestation(attestation: CompletionAttestat
     throw new Error("unsupported completion attestation version");
   }
   if (!attestation.jobId.trim()) throw new Error("attestation jobId is required");
+  if (attestation.onchainJobId !== undefined) canonicalOnchainJobId(attestation.onchainJobId);
   if (!attestation.agentId.trim()) throw new Error("attestation agentId is required");
   if (!isHexString(attestation.taskHash, 32)) throw new Error("attestation taskHash must be a 32-byte hex value");
   if (!attestation.resultHash.trim()) throw new Error("attestation resultHash is required");
