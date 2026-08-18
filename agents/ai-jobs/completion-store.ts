@@ -20,8 +20,8 @@ function validateRecord(record: CompletionPublicationRecord): void {
   if (!record.publishedAt.trim()) throw new Error("publishedAt is required");
   if (record.attestation !== undefined) {
     if (!record.attestation.jobId.trim()) throw new Error("attestation jobId is required");
-    if (!record.attestation.signature.trim()) throw new Error("attestation signature is required");
-    if (!record.attestation.signer.trim()) throw new Error("attestation signer is required");
+    if (record.attestation.signature.trim() === "") throw new Error("attestation signature is required");
+    if (record.attestation.signer.trim() === "") throw new Error("attestation signer is required");
     if (record.attestation.jobId !== record.jobId) {
       throw new Error(`attestation jobId ${record.attestation.jobId} does not match record ${record.jobId}`);
     }
@@ -33,6 +33,7 @@ function attestationFingerprint(attestation?: CompletionAttestation): string | u
   return [
     attestation.version,
     attestation.jobId,
+    attestation.onchainJobId ?? "",
     attestation.agentId,
     attestation.taskHash,
     attestation.resultHash,
@@ -100,11 +101,6 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
 
     for (const record of records) {
       validateRecord(record);
-      if (record.attestation !== undefined) {
-        if (!record.attestation.jobId || !record.attestation.signature || !record.attestation.signer) {
-          throw new Error("invalid completion attestation in publication record");
-        }
-      }
       const existing = this.records.get(record.jobId);
       if (existing) assertImmutable(existing, record);
       this.records.set(record.jobId, record);
