@@ -48,6 +48,7 @@ describe("OnchainJobProvisioner", function () {
     const bindings = new MemoryOnchainJobBindingStore();
     const provisioner = new OnchainJobProvisioner({
       signer: developer,
+      assignmentSigner: owner,
       engineAddress: await engine.getAddress(),
       rewardTokenAddress: await token.getAddress(),
       bindings,
