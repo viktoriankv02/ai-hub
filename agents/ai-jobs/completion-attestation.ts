@@ -50,7 +50,7 @@ export function canonicalCompletionMessage(payload: CompletionAttestationPayload
   ].join("\n");
 }
 
-function completionSigningDigest(payload: CompletionAttestationPayload): Uint8Array {
+export function completionSigningDigest(payload: CompletionAttestationPayload): Uint8Array {
   return getBytes(keccak256(toUtf8Bytes(canonicalCompletionMessage(payload))));
 }
 
