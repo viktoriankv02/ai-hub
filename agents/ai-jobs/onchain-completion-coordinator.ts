@@ -44,7 +44,11 @@ export class OnchainCompletionCoordinator {
   async attestAndSubmit(job: AIJobRecord): Promise<OnchainCompletionCoordinatorResult> {
     if (job.status !== "completed") throw new Error("only completed jobs can be submitted on-chain");
     const provisioning = await this.options.provisioner.provision(job);
-    const completion = await this.bridge.publish(job, this.options.attestationSigner);
+    const completion = await this.bridge.publish(
+      job,
+      this.options.attestationSigner,
+      provisioning.onchainJobId,
+    );
     let rewardSettlement: OnchainRewardSettlement | undefined;
     if (this.options.autoSettleReward && this.options.rewardSettler) {
       rewardSettlement = await this.options.rewardSettler.settle(provisioning.onchainJobId);
@@ -60,3 +64,4 @@ export class OnchainCompletionCoordinator {
     return this.bridge.getPublished(jobId);
   }
 }
+
