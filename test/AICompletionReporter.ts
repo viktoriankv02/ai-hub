@@ -1,7 +1,9 @@
 import { expect } from "chai";
 import { keccak256, toUtf8Bytes } from "ethers";
 import { network } from "hardhat";
-import { canonicalCompletionMessage, canonicalTaskHash } from "../agents/ai-jobs/completion-attestation.js";
+import { canonicalCompletionMessage, canonicalTaskHash, completionSigningDigest } from "../agents/ai-jobs/completion-attestation.js";
+import type { CompletionAttestationPayload } from "../agents/ai-jobs/completion-attestation.js";
+import type { AIJobRecord } from "../agents/ai-jobs/types.js";
 
 const { ethers } = await network.connect();
 
@@ -51,15 +53,15 @@ describe("AICompletionReporter", function () {
 
   async function signedCompletion(system: Awaited<ReturnType<typeof deploySystem>>, taskHash: string, resultHash = "RESULT_REPORTER") {
     const signer = await system.owner.getAddress();
-    const payload = {
-      version: "AI_HUB_JOB_COMPLETION_V1" as const,
+    const payload: CompletionAttestationPayload = {
+      version: "AI_HUB_JOB_COMPLETION_V1",
       jobId: "1",
       agentId: "1",
       taskHash,
       resultHash,
       completedAt: "2026-08-13T17:00:00.000Z",
     };
-    const signature = await system.owner.signMessage(canonicalCompletionMessage(payload));
+    const signature = await system.owner.signMessage(completionSigningDigest(payload));
     return {
       ...payload,
       signature,
@@ -95,7 +97,7 @@ describe("AICompletionReporter", function () {
     const attestation = await signedCompletion(system, taskHash, "RESULT_AGENT_BINDING");
     const forgedAgentId = "999";
     const forgedPayload = { ...attestation, agentId: forgedAgentId };
-    const forgedSignature = await owner.signMessage(canonicalCompletionMessage(forgedPayload));
+    const forgedSignature = await owner.signMessage(completionSigningDigest(forgedPayload));
     const forgedCompletionId = completionId(forgedPayload.agentId, forgedPayload.jobId, forgedPayload.taskHash, forgedPayload.resultHash, forgedPayload.completedAt, await owner.getAddress());
 
     await expect(reporter.connect(owner).submitVerifiedCompletion(
@@ -119,11 +121,11 @@ describe("AICompletionReporter", function () {
     const system = await deploySystem();
     const { taskHash } = await createAssignedJob(system);
     const { owner, other, reporter } = system;
-    const payload = {
-      version: "AI_HUB_JOB_COMPLETION_V1" as const,
+    const payload: CompletionAttestationPayload = {
+      version: "AI_HUB_JOB_COMPLETION_V1",
       jobId: "1", agentId: "1", taskHash, resultHash: "RESULT_UNTRUSTED", completedAt: "2026-08-13T17:00:00.000Z",
     };
-    const signature = await other.signMessage(canonicalCompletionMessage(payload));
+    const signature = await other.signMessage(completionSigningDigest(payload));
     const otherAddress = await other.getAddress();
     const completion = completionId(payload.agentId, payload.jobId, payload.taskHash, payload.resultHash, payload.completedAt, otherAddress);
     await expect(reporter.connect(owner).submitVerifiedCompletion(
