@@ -7,7 +7,8 @@ import {
   toUtf8Bytes,
 } from "ethers";
 import type { Signer } from "ethers";
-import type { CompletionAttestation, CompletionAttestationSink } from "./completion-bridge.js";
+import type { CompletionAttestationSink } from "./completion-bridge.js";
+import type { CompletionAttestation } from "./completion-attestation.js";
 import { assertValidCompletionAttestation } from "./completion-attestation.js";
 
 const COMPLETION_REPORTER_ABI = [
