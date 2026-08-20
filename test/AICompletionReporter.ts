@@ -80,7 +80,8 @@ describe("AICompletionReporter", function () {
     const developerAddress = await developer.getAddress();
     const args = [1, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attestation.signature, attestation.activityType, attestation.projectId, attestation.metadataHash, attestation.completionId] as const;
 
-    expect(await reporter.connect(owner).submitVerifiedCompletion.staticCall(...args)).to.equal(1n);
+    // ActivityRegistry uses zero-based activity IDs: the first recorded activity is ID 0.
+    expect(await reporter.connect(owner).submitVerifiedCompletion.staticCall(...args)).to.equal(0n);
     await (await reporter.connect(owner).submitVerifiedCompletion(...args)).wait();
 
     const completed = await engine.jobs(1);
