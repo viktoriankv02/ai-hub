@@ -1,4 +1,4 @@
-import { getAddress, id, isHexString, verifyMessage } from "ethers";
+import { getAddress, getBytes, id, isHexString, keccak256, toUtf8Bytes, verifyMessage } from "ethers";
 import type { AIJobRecord } from "./types.js";
 
 export const COMPLETION_ATTESTATION_VERSION = "AI_HUB_JOB_COMPLETION_V1";
@@ -21,7 +21,7 @@ export interface CompletionAttestation extends CompletionAttestationPayload {
 
 export interface AttestationSigner {
   getAddress(): Promise<string>;
-  signMessage(message: string): Promise<string>;
+  signMessage(message: string | Uint8Array): Promise<string>;
 }
 
 export function canonicalTaskHash(taskHash: string): string {
@@ -50,6 +50,10 @@ export function canonicalCompletionMessage(payload: CompletionAttestationPayload
   ].join("\n");
 }
 
+function completionSigningDigest(payload: CompletionAttestationPayload): Uint8Array {
+  return getBytes(keccak256(toUtf8Bytes(canonicalCompletionMessage(payload))));
+}
+
 export function payloadFromJob(
   job: AIJobRecord,
   onchainJobId?: bigint | number | string,
@@ -75,7 +79,7 @@ export async function createCompletionAttestation(
   onchainJobId?: bigint | number | string,
 ): Promise<CompletionAttestation> {
   const payload = payloadFromJob(job, onchainJobId);
-  const signature = await signer.signMessage(canonicalCompletionMessage(payload));
+  const signature = await signer.signMessage(completionSigningDigest(payload));
   const signerAddress = getAddress(await signer.getAddress());
 
   return {
@@ -88,7 +92,7 @@ export async function createCompletionAttestation(
 export function verifyCompletionAttestation(attestation: CompletionAttestation): boolean {
   try {
     const recovered = getAddress(
-      verifyMessage(canonicalCompletionMessage(attestation), attestation.signature),
+      verifyMessage(completionSigningDigest(attestation), attestation.signature),
     );
     return recovered === getAddress(attestation.signer);
   } catch {
