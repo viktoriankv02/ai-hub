@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { Wallet } from "ethers";
 import {
   COMPLETION_ATTESTATION_VERSION,
-  canonicalCompletionMessage,
+  completionSigningDigest,
   type CompletionAttestation,
 } from "../agents/ai-jobs/completion-attestation.js";
 import { CompletionAttestationPolicy } from "../agents/ai-jobs/completion-policy.js";
@@ -40,7 +40,7 @@ async function attestation(job: AIJobRecord, wallet: Wallet): Promise<Completion
   return {
     ...payload,
     signer: await wallet.getAddress(),
-    signature: await wallet.signMessage(canonicalCompletionMessage(payload)),
+    signature: await wallet.signMessage(completionSigningDigest(payload)),
   };
 }
 
