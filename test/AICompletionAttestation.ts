@@ -75,7 +75,7 @@ describe("AI completion attestation", function () {
         "AI_HUB_JOB_COMPLETION_V1",
         "jobId=job_attestation_1",
         "agentId=drop-hunter",
-        "taskHash=sha256:task-123",
+        "taskHash=0xc8c63eb1f5f0c0c1ff0f340279ef08a2e73286382d634cc143e657b9da63a6c4",
         "resultHash=sha256:result-456",
         "completedAt=2026-08-12T10:00:05.000Z",
       ].join("\n"),
