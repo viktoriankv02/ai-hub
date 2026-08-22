@@ -6,17 +6,15 @@ import { EVM_NETWORKS } from "../deploy/config/networks";
 const execFileAsync = promisify(execFile);
 const npmCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 
-const requested = (process.env.AI_HUB_NETWORKS ?? Object.keys(EVM_NETWORKS.join ? {} : EVM_NETWORKS)).split(",").map((value) => value.trim()).filter(Boolean);
-const targets = requested.length > 0 ? requested : Object.keys(EVM_NETWORKS);
+const targets = (process.env.AI_HUB_NETWORKS ?? Object.keys(EVM_NETWORKS).join(","))
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 for (const target of targets) {
   const config = EVM_NETWORKS[target];
   if (!config) throw new Error(`Unsupported AI Hub network: ${target}`);
   if (!config.testnet) throw new Error(`Refusing non-testnet deployment: ${config.name}`);
-}
-
-for (const target of targets) {
-  const config = EVM_NETWORKS[target];
   if (!process.env[config.rpcEnv]) {
     throw new Error(`Missing ${config.rpcEnv} required for ${target}`);
   }
@@ -42,7 +40,7 @@ for (const target of targets) {
 
   for (const step of steps) {
     console.log(`\n[${target}] ${step}`);
-    await execFileAsync(
+    const { stdout, stderr } = await execFileAsync(
       npmCommand,
       ["hardhat", "run", step, "--network", target],
       {
@@ -54,6 +52,8 @@ for (const target of targets) {
         maxBuffer: 10 * 1024 * 1024,
       },
     );
+    if (stdout) process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
   }
 
   console.log(`\n${config.name}: core deployment and verification completed.`);
