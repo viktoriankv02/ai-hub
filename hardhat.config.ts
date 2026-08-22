@@ -8,6 +8,13 @@ export default defineConfig({
     profiles: {
       default: {
         version: "0.8.28",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+          viaIR: true,
+        },
       },
       production: {
         version: "0.8.28",
@@ -16,6 +23,7 @@ export default defineConfig({
             enabled: true,
             runs: 200,
           },
+          viaIR: true,
         },
       },
     },
@@ -48,6 +56,41 @@ export default defineConfig({
       chainType: "op",
       url: configVariable("INK_SEPOLIA_RPC_URL"),
       chainId: 763373,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    arbitrumSepolia: {
+      type: "http",
+      chainType: "op",
+      url: configVariable("ARBITRUM_SEPOLIA_RPC_URL"),
+      chainId: 421614,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    optimismSepolia: {
+      type: "http",
+      chainType: "op",
+      url: configVariable("OPTIMISM_SEPOLIA_RPC_URL"),
+      chainId: 11155420,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    bnbTestnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("BNB_TESTNET_RPC_URL"),
+      chainId: 97,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    avalancheFuji: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("AVALANCHE_FUJI_RPC_URL"),
+      chainId: 43113,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
+    polygonAmoy: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("POLYGON_AMOY_RPC_URL"),
+      chainId: 80002,
       accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
     plasmaTestnet: {
