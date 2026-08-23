@@ -2,3 +2,5 @@
 artifacts/
 cache/
 types/
+.env
+deployments/
