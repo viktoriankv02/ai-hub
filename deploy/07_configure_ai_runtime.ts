@@ -2,38 +2,120 @@ import { network } from "hardhat";
 import { EVM_NETWORKS } from "./config/networks";
 import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
+import { loadDeployment } from "./utils/deployment";
 
 const target = requireEnv("AI_HUB_NETWORK");
 validateDeploymentEnvironment(target);
+
 const config = EVM_NETWORKS[target];
 const { ethers } = await network.connect();
 const connectedChainId = Number((await ethers.provider.getNetwork()).chainId);
-if (connectedChainId !== config.chainId) throw new Error(`Network mismatch: connected ${connectedChainId}, expected ${config.chainId}`);
 
-const engineAddress = requireEnv("AI_AGENT_ENGINE_ADDRESS");
-const reporterAddress = requireEnv("AI_COMPLETION_REPORTER_ADDRESS");
+if (connectedChainId !== config.chainId) {
+  throw new Error(
+    `Network mismatch: connected ${connectedChainId}, expected ${config.chainId}`,
+  );
+}
+
 const completionCaller = requireEnv("AI_COMPLETION_CALLER_ADDRESS");
-const activityRegistryAddress = requireEnv("ACTIVITY_REGISTRY_ADDRESS");
+const attester = process.env.AI_COMPLETION_ATTESTER_ADDRESS ?? completionCaller;
 const activityType = process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED";
 
+const deployment = await loadDeployment(target);
+
+const engineAddress = deployment.contracts.AIAgentEngine;
+const reporterAddress = deployment.contracts.AICompletionReporter;
+const activityRegistryAddress = deployment.contracts.ActivityRegistry;
+
+if (!engineAddress) {
+  throw new Error(
+    `Deployment artifact for ${target} is missing AIAgentEngine. Run 06_deploy_ai_runtime.ts first.`,
+  );
+}
+
+if (!reporterAddress) {
+  throw new Error(
+    `Deployment artifact for ${target} is missing AICompletionReporter. Run 06_deploy_ai_runtime.ts first.`,
+  );
+}
+
+if (!activityRegistryAddress) {
+  throw new Error(
+    `Deployment artifact for ${target} is missing ActivityRegistry. Run the core deployment first.`,
+  );
+}
+
 const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
-const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddress);
-const registry = await ethers.getContractAt("ActivityRegistry", activityRegistryAddress);
+const reporter = await ethers.getContractAt(
+  "AICompletionReporter",
+  reporterAddress,
+);
+const registry = await ethers.getContractAt(
+  "ActivityRegistry",
+  activityRegistryAddress,
+);
 
-console.log(`Authorizing reporter ${reporterAddress} in AIAgentEngine`);
-await (await engine.setCompletionReporter(reporterAddress, true)).wait();
+console.log(`Configuring AI runtime on ${config.name} (${config.chainId})`);
+console.log(`Engine=${engineAddress}`);
+console.log(`Reporter=${reporterAddress}`);
+console.log(`Completion caller=${completionCaller}`);
+console.log(`Attester=${attester}`);
+console.log(`Activity type=${activityType}`);
 
-console.log(`Authorizing completion caller ${completionCaller} in AICompletionReporter`);
-await (await reporter.setCompletionCaller(completionCaller, true)).wait();
+if (!(await engine.completionReporters(reporterAddress))) {
+  await (await engine.setCompletionReporter(reporterAddress, true)).wait();
+  console.log("AIAgentEngine completion reporter authorized.");
+} else {
+  console.log("AIAgentEngine completion reporter already authorized.");
+}
 
-console.log(`Authorizing reporter ${reporterAddress} in ActivityRegistry`);
-await (await registry.setActivityType(ethers.id(activityType), true)).wait();
-await (await registry.setReporter(reporterAddress, true)).wait();
+if (!(await reporter.completionCallers(completionCaller))) {
+  await (await reporter.setCompletionCaller(completionCaller, true)).wait();
+  console.log("AICompletionReporter caller authorized.");
+} else {
+  console.log("AICompletionReporter caller already authorized.");
+}
 
-console.log("AI runtime authorization configured.");
+if (!(await reporter.attesters(attester))) {
+  await (await reporter.setAttester(attester, true)).wait();
+  console.log("AICompletionReporter attester authorized.");
+} else {
+  console.log("AICompletionReporter attester already authorized.");
+}
+
+const activityTypeHash = ethers.id(activityType);
+if (!(await registry.supportedActivityTypes(activityTypeHash))) {
+  await (await registry.setActivityType(activityTypeHash, true)).wait();
+  console.log("AI completion activity type registered.");
+} else {
+  console.log("AI completion activity type already registered.");
+}
+
+if (!(await registry.reporters(reporterAddress))) {
+  await (await registry.setReporter(reporterAddress, true)).wait();
+  console.log("ActivityRegistry reporter authorized.");
+} else {
+  console.log("ActivityRegistry reporter already authorized.");
+}
+
+const engineAuthorized = await engine.completionReporters(reporterAddress);
+const callerAuthorized = await reporter.completionCallers(completionCaller);
+const attesterAuthorized = await reporter.attesters(attester);
+const activitySupported = await registry.supportedActivityTypes(activityTypeHash);
+const registryAuthorized = await registry.reporters(reporterAddress);
+
+if (!engineAuthorized) throw new Error("AIAgentEngine reporter authorization failed");
+if (!callerAuthorized) throw new Error("AICompletionReporter caller authorization failed");
+if (!attesterAuthorized) throw new Error("AICompletionReporter attester authorization failed");
+if (!activitySupported) throw new Error("AI completion activity type is not supported");
+if (!registryAuthorized) throw new Error("ActivityRegistry reporter authorization failed");
+
+console.log("");
+console.log("AI runtime authorization verified.");
 console.log(`Network: ${config.name} (${config.chainId})`);
 console.log(`Engine: ${engineAddress}`);
 console.log(`Reporter: ${reporterAddress}`);
 console.log(`Completion caller: ${completionCaller}`);
+console.log(`Attester: ${attester}`);
 console.log(`ActivityRegistry: ${activityRegistryAddress}`);
 console.log(`Activity type: ${activityType}`);
