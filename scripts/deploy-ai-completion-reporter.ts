@@ -1,31 +1,107 @@
 import { network } from "hardhat";
+import { EVM_NETWORKS } from "../deploy/config/networks";
+import { requireEnv } from "../deploy/config/env";
+import { validateDeploymentEnvironment } from "../deploy/config/validate";
+import { loadDeployment, saveDeployment } from "../deploy/utils/deployment";
 
-const engineAddress = process.env.AI_AGENT_ENGINE_ADDRESS;
-const activityRegistryAddress = process.env.ACTIVITY_REGISTRY_ADDRESS;
+const target = requireEnv("AI_HUB_NETWORK");
+validateDeploymentEnvironment(target);
 
-if (!engineAddress) throw new Error("AI_AGENT_ENGINE_ADDRESS is required");
-if (!activityRegistryAddress) throw new Error("ACTIVITY_REGISTRY_ADDRESS is required");
-
+const config = EVM_NETWORKS[target];
 const { ethers } = await network.connect();
-const [deployer] = await ethers.getSigners();
+const connectedChainId = Number((await ethers.provider.getNetwork()).chainId);
 
-const Reporter = await ethers.getContractFactory("AICompletionReporter");
-const reporter = await Reporter.deploy(
-  deployer.address,
-  engineAddress,
+if (connectedChainId !== config.chainId) {
+  throw new Error(
+    `Network mismatch: connected ${connectedChainId}, expected ${config.chainId}`,
+  );
+}
+
+const deployment = await loadDeployment(target);
+const engineAddress = deployment.contracts.AIAgentEngine;
+const activityRegistryAddress = deployment.contracts.ActivityRegistry;
+
+if (!engineAddress) {
+  throw new Error(
+    `Deployment artifact for ${target} is missing AIAgentEngine. Run deploy/06_deploy_ai_runtime.ts first.`,
+  );
+}
+
+if (!activityRegistryAddress) {
+  throw new Error(
+    `Deployment artifact for ${target} is missing ActivityRegistry. Run the core deployment first.`,
+  );
+}
+
+const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
+const registry = await ethers.getContractAt(
+  "ActivityRegistry",
   activityRegistryAddress,
 );
-await reporter.waitForDeployment();
 
-const address = await reporter.getAddress();
-console.log("AICompletionReporter deployed");
-console.log(`network=${process.env.HARDHAT_NETWORK ?? "hardhat"}`);
-console.log(`deployer=${deployer.address}`);
-console.log(`engine=${engineAddress}`);
-console.log(`activityRegistry=${activityRegistryAddress}`);
-console.log(`reporter=${address}`);
+let reporterAddress = deployment.contracts.AICompletionReporter;
+
+if (reporterAddress) {
+  const reporter = await ethers.getContractAt(
+    "AICompletionReporter",
+    reporterAddress,
+  );
+
+  if ((await reporter.engine()).toLowerCase() !== engineAddress.toLowerCase()) {
+    throw new Error("Existing AICompletionReporter engine mismatch");
+  }
+
+  if (
+    (await reporter.activityRegistry()).toLowerCase() !==
+    activityRegistryAddress.toLowerCase()
+  ) {
+    throw new Error("Existing AICompletionReporter ActivityRegistry mismatch");
+  }
+
+  console.log(`Reusing AICompletionReporter: ${reporterAddress}`);
+} else {
+  const admin = requireEnv("AI_HUB_ADMIN_ADDRESS");
+  const reporter = await ethers.deployContract("AICompletionReporter", [
+    admin,
+    engineAddress,
+    activityRegistryAddress,
+  ]);
+  await reporter.waitForDeployment();
+  reporterAddress = await reporter.getAddress();
+
+  await saveDeployment({
+    ...deployment,
+    deployedAt: new Date().toISOString(),
+    contracts: {
+      ...deployment.contracts,
+      AICompletionReporter: reporterAddress,
+    },
+  });
+
+  console.log(`AICompletionReporter deployed: ${reporterAddress}`);
+}
+
+if (!(await engine.completionReporters(reporterAddress))) {
+  await (await engine.setCompletionReporter(reporterAddress, true)).wait();
+  console.log("AIAgentEngine completion reporter authorized.");
+}
+
+if (!(await registry.reporters(reporterAddress))) {
+  await (await registry.setReporter(reporterAddress, true)).wait();
+  console.log("ActivityRegistry reporter authorized.");
+}
+
+if (!(await engine.completionReporters(reporterAddress))) {
+  throw new Error("AICompletionReporter is not authorized in AIAgentEngine");
+}
+
+if (!(await registry.reporters(reporterAddress))) {
+  throw new Error("AICompletionReporter is not authorized in ActivityRegistry");
+}
+
 console.log("");
-console.log("Next configuration:");
-console.log(`AI_COMPLETION_REPORTER_ADDRESS=${address}`);
-console.log("Authorize this address in AIAgentEngine.setCompletionReporter(reporter, true).");
-console.log("Authorize this address in ActivityRegistry.setReporter(reporter, true).");
+console.log("AI Completion Reporter deployment verified.");
+console.log(`Network: ${config.name} (${config.chainId})`);
+console.log(`Reporter: ${reporterAddress}`);
+console.log(`Engine: ${engineAddress}`);
+console.log(`ActivityRegistry: ${activityRegistryAddress}`);
