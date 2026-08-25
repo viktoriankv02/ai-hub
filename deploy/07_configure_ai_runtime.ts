@@ -17,7 +17,8 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
-const completionCaller = requireEnv("AI_COMPLETION_CALLER_ADDRESS");
+const admin = requireEnv("AI_HUB_ADMIN_ADDRESS");
+const completionCaller = process.env.AI_COMPLETION_CALLER_ADDRESS ?? admin;
 const attester = process.env.AI_COMPLETION_ATTESTER_ADDRESS ?? completionCaller;
 const activityType = process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED";
 
