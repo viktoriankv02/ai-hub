@@ -56,6 +56,22 @@ const registry = await ethers.getContractAt(
   activityRegistryAddress,
 );
 
+const waitForBoolean = async (
+  label: string,
+  read: () => Promise<boolean>,
+  attempts = 12,
+  delayMs = 1500,
+): Promise<void> => {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await read()) return;
+    if (attempt < attempts) {
+      console.log(`${label} not visible yet; retrying (${attempt}/${attempts - 1})...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error(`${label} was not observed after ${attempts} RPC checks`);
+};
+
 console.log(`Configuring AI runtime on ${config.name} (${config.chainId})`);
 console.log(`Engine=${engineAddress}`);
 console.log(`Reporter=${reporterAddress}`);
@@ -65,51 +81,49 @@ console.log(`Activity type=${activityType}`);
 
 if (!(await engine.completionReporters(reporterAddress))) {
   await (await engine.setCompletionReporter(reporterAddress, true)).wait();
-  console.log("AIAgentEngine completion reporter authorized.");
-} else {
-  console.log("AIAgentEngine completion reporter already authorized.");
+  console.log("AIAgentEngine completion reporter authorization transaction confirmed.");
 }
+await waitForBoolean(
+  "AIAgentEngine completion reporter authorization",
+  () => engine.completionReporters(reporterAddress),
+);
 
 if (!(await reporter.completionCallers(completionCaller))) {
   await (await reporter.setCompletionCaller(completionCaller, true)).wait();
-  console.log("AICompletionReporter caller authorized.");
-} else {
-  console.log("AICompletionReporter caller already authorized.");
+  console.log("AICompletionReporter caller authorization transaction confirmed.");
 }
+await waitForBoolean(
+  "AICompletionReporter caller authorization",
+  () => reporter.completionCallers(completionCaller),
+);
 
 if (!(await reporter.attesters(attester))) {
   await (await reporter.setAttester(attester, true)).wait();
-  console.log("AICompletionReporter attester authorized.");
-} else {
-  console.log("AICompletionReporter attester already authorized.");
+  console.log("AICompletionReporter attester authorization transaction confirmed.");
 }
+await waitForBoolean(
+  "AICompletionReporter attester authorization",
+  () => reporter.attesters(attester),
+);
 
 const activityTypeHash = ethers.id(activityType);
 if (!(await registry.supportedActivityTypes(activityTypeHash))) {
   await (await registry.setActivityType(activityTypeHash, true)).wait();
-  console.log("AI completion activity type registered.");
-} else {
-  console.log("AI completion activity type already registered.");
+  console.log("AI completion activity type registration transaction confirmed.");
 }
+await waitForBoolean(
+  "AI completion activity type registration",
+  () => registry.supportedActivityTypes(activityTypeHash),
+);
 
 if (!(await registry.reporters(reporterAddress))) {
   await (await registry.setReporter(reporterAddress, true)).wait();
-  console.log("ActivityRegistry reporter authorized.");
-} else {
-  console.log("ActivityRegistry reporter already authorized.");
+  console.log("ActivityRegistry reporter authorization transaction confirmed.");
 }
-
-const engineAuthorized = await engine.completionReporters(reporterAddress);
-const callerAuthorized = await reporter.completionCallers(completionCaller);
-const attesterAuthorized = await reporter.attesters(attester);
-const activitySupported = await registry.supportedActivityTypes(activityTypeHash);
-const registryAuthorized = await registry.reporters(reporterAddress);
-
-if (!engineAuthorized) throw new Error("AIAgentEngine reporter authorization failed");
-if (!callerAuthorized) throw new Error("AICompletionReporter caller authorization failed");
-if (!attesterAuthorized) throw new Error("AICompletionReporter attester authorization failed");
-if (!activitySupported) throw new Error("AI completion activity type is not supported");
-if (!registryAuthorized) throw new Error("ActivityRegistry reporter authorization failed");
+await waitForBoolean(
+  "ActivityRegistry reporter authorization",
+  () => registry.reporters(reporterAddress),
+);
 
 console.log("");
 console.log("AI runtime authorization verified.");
