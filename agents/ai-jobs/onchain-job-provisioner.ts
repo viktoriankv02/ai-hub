@@ -50,6 +50,33 @@ function rewardAmount(value: string): bigint {
   throw new Error("job reward must be a positive integer token amount");
 }
 
+async function readAllowanceWithRetry(
+  token: Contract,
+  owner: string,
+  spender: string,
+  attempts = 5,
+  delayMs = 1500,
+): Promise<bigint> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return BigInt(await token.allowance(owner, spender));
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw new Error(
+    `failed to read ERC20 allowance after ${attempts} attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
 export class OnchainJobProvisioner {
   private readonly engine: Contract;
   private readonly assignmentEngine: Contract;
@@ -92,7 +119,12 @@ export class OnchainJobProvisioner {
 
     let approvalTransactionId: string | undefined;
     const owner = await this.options.signer.getAddress();
-    const allowance = BigInt(await this.token.allowance(owner, this.options.engineAddress));
+    const allowance = await readAllowanceWithRetry(
+      this.token,
+      owner,
+      this.options.engineAddress,
+    );
+
     if (allowance < reward) {
       const approval = (await this.token.approve(
         this.options.engineAddress,
