@@ -37,6 +37,8 @@ describe("AICompletionReporter hardhat smoke", function () {
     await (await reporter.submitVerifiedCompletion(1, ethers.id("RESULT_CHAIN"), activityType, ethers.id("AI_HUB"), ethers.id("META_CHAIN"), ethers.id("COMPLETION_CHAIN"))).wait();
 
     const chainId = BigInt((await ethers.provider.getNetwork()).chainId);
-    expect(await registry.getActivity(await developer.getAddress(), 0)).to.include({ chainId, verified: true });
+    const activity = await registry.getActivity(await developer.getAddress(), 0);
+    expect(activity.chainId).to.equal(chainId);
+    expect(activity.verified).to.equal(true);
   });
 });
