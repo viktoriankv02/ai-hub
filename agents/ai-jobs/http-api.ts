@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { AIJobService } from "./service.js";
 import type { AIJobRequest } from "./types.js";
 import type { DropHunterAgent } from "../drop-hunter/drop-hunter-agent.js";
+import { planDropTaskJobs } from "./task-job-planner.js";
 
 export interface AIJobHttpApiOptions {
   token?: string;
@@ -12,6 +13,13 @@ export interface AIJobHttpApiOptions {
 export interface AIJobHttpServerOptions extends AIJobHttpApiOptions {
   host?: string;
   port?: number;
+}
+
+interface PlanRequest {
+  agentId?: string;
+  reward?: string;
+  minimumScore?: number;
+  includeApprovalRequired?: boolean;
 }
 
 export class AIJobHttpApi {
@@ -38,7 +46,6 @@ export class AIJobHttpApi {
         this.write(res, 204, undefined);
         return;
       }
-
       if (!this.authorized(req)) {
         this.write(res, 401, { error: "unauthorized" });
         return;
@@ -57,8 +64,30 @@ export class AIJobHttpApi {
           this.write(res, 503, { error: "drop_hunter_not_configured" });
           return;
         }
+        this.write(res, 200, await this.dropHunter.scan());
+        return;
+      }
+
+      if (req.method === "POST" && path === "/opportunities/plan") {
+        if (!this.dropHunter) {
+          this.write(res, 503, { error: "drop_hunter_not_configured" });
+          return;
+        }
+        const body = await this.readJson<PlanRequest>(req);
         const report = await this.dropHunter.scan();
-        this.write(res, 200, report);
+        const requests = planDropTaskJobs(report.results, {
+          agentId: body.agentId?.trim() || "1",
+          reward: body.reward ?? "0",
+          minimumScore: body.minimumScore ?? 30,
+          includeApprovalRequired: body.includeApprovalRequired ?? false,
+        });
+        const jobs = requests.map((request) => this.service.enqueue(request));
+        this.write(res, 201, {
+          generatedAt: report.generatedAt,
+          opportunities: report.opportunities.length,
+          tasks: report.results.reduce((sum, result) => sum + result.tasks.length, 0),
+          jobs,
+        });
         return;
       }
 
@@ -78,7 +107,6 @@ export class AIJobHttpApi {
       if (match) {
         const id = decodeURIComponent(match[1]);
         const action = match[2];
-
         if (req.method === "GET" && !action) {
           const job = this.service.get(id);
           if (!job) {
@@ -88,44 +116,32 @@ export class AIJobHttpApi {
           this.write(res, 200, { job });
           return;
         }
-
         if (req.method === "POST" && action === "run") {
-          const job = await this.service.run(id);
-          this.write(res, 200, { job });
+          this.write(res, 200, { job: await this.service.run(id) });
           return;
         }
-
         if (req.method === "POST" && action === "provision-onchain") {
-          const result = await this.service.provisionOnchain(id);
-          this.write(res, 200, { result });
+          this.write(res, 200, { result: await this.service.provisionOnchain(id) });
           return;
         }
-
         if (req.method === "POST" && action === "submit-onchain") {
-          const result = await this.service.submitCompletionOnchain(id);
-          this.write(res, 200, { result });
+          this.write(res, 200, { result: await this.service.submitCompletionOnchain(id) });
           return;
         }
-
         if (req.method === "POST" && action === "retry") {
-          const job = this.service.retry(id);
-          this.write(res, 200, { job });
+          this.write(res, 200, { job: this.service.retry(id) });
           return;
         }
-
         if (req.method === "POST" && action === "cancel") {
-          const job = this.service.cancel(id);
-          this.write(res, 200, { job });
+          this.write(res, 200, { job: this.service.cancel(id) });
           return;
         }
       }
 
       if (req.method === "POST" && path === "/jobs/drain") {
-        const result = await this.service.drain();
-        this.write(res, 200, result);
+        this.write(res, 200, await this.service.drain());
         return;
       }
-
       this.write(res, 404, { error: "route_not_found" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -152,21 +168,18 @@ export class AIJobHttpApi {
 
   private authorized(req: IncomingMessage): boolean {
     if (!this.token) return true;
-    const value = req.headers.authorization;
-    return value === `Bearer ${this.token}`;
+    return req.headers.authorization === `Bearer ${this.token}`;
   }
 
   private async readJson<T>(req: IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
     let size = 0;
-
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += buffer.length;
       if (size > this.maxBodyBytes) throw new Error("request body is too large");
       chunks.push(buffer);
     }
-
     const raw = Buffer.concat(chunks).toString("utf8").trim();
     if (!raw) throw new Error("request body is required");
     return JSON.parse(raw) as T;
