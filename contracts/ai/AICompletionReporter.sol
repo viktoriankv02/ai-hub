@@ -40,19 +40,6 @@ contract AICompletionReporter is Ownable {
     using MessageHashUtils for bytes32;
     using Strings for uint256;
 
-    struct CompletionInput {
-        uint256 jobId;
-        string agentId;
-        string taskHash;
-        string resultHash;
-        string completedAt;
-        bytes signature;
-        bytes32 activityType;
-        bytes32 projectId;
-        bytes32 metadataHash;
-        bytes32 completionId;
-    }
-
     struct CompletionAttestation {
         uint256 jobId;
         string agentId;
@@ -163,58 +150,42 @@ contract AICompletionReporter is Ownable {
             metadataHash: metadataHash,
             completionId: completionId
         });
-        return _submitVerifiedCompletion(attestation, metadata);
+        return _processCompletion(attestation, metadata);
     }
 
-    function _submitVerifiedCompletion(CompletionAttestation memory attestation, CompletionMetadata memory metadata) internal returns (uint256 activityId) {
-        CompletionInput memory input = CompletionInput({
-            jobId: attestation.jobId,
-            agentId: attestation.agentId,
-            taskHash: attestation.taskHash,
-            resultHash: attestation.resultHash,
-            completedAt: attestation.completedAt,
-            signature: attestation.signature,
-            activityType: metadata.activityType,
-            projectId: metadata.projectId,
-            metadataHash: metadata.metadataHash,
-            completionId: metadata.completionId
-        });
-        return _processCompletion(input);
-    }
+    function _processCompletion(CompletionAttestation memory attestation, CompletionMetadata memory metadata) internal returns (uint256 activityId) {
+        if (bytes(attestation.resultHash).length == 0) revert EmptyResultHash();
+        if (metadata.completionId == bytes32(0) || submittedCompletions[metadata.completionId]) revert CompletionAlreadySubmitted();
 
-    function _processCompletion(CompletionInput memory input) internal returns (uint256 activityId) {
-        if (bytes(input.resultHash).length == 0) revert EmptyResultHash();
-        if (input.completionId == bytes32(0) || submittedCompletions[input.completionId]) revert CompletionAlreadySubmitted();
-
-        IAIAgentEngineCompletion.AIJob memory job = engine.jobs(input.jobId);
-        if (job.id != input.jobId || !job.assigned) revert InvalidJob();
+        IAIAgentEngineCompletion.AIJob memory job = engine.jobs(attestation.jobId);
+        if (job.id != attestation.jobId || !job.assigned) revert InvalidJob();
         if (job.completed) revert JobAlreadyCompleted();
-        if (bytes(input.completedAt).length == 0 || keccak256(bytes(input.taskHash)) != job.taskHash) revert InvalidAttestation();
+        if (bytes(attestation.completedAt).length == 0 || keccak256(bytes(attestation.taskHash)) != job.taskHash) revert InvalidAttestation();
 
-        address attester = completionDigest(input.jobId, input.agentId, input.taskHash, input.resultHash, input.completedAt).recover(input.signature);
+        address attester = completionDigest(attestation.jobId, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt).recover(attestation.signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
-        if (input.completionId != expectedCompletionId(input.jobId, input.agentId, input.taskHash, input.resultHash, input.completedAt, attester)) revert InvalidAttestation();
+        if (metadata.completionId != expectedCompletionId(attestation.jobId, attestation.agentId, attestation.taskHash, attestation.resultHash, attestation.completedAt, attester)) revert InvalidAttestation();
 
-        bytes32 onchainResultHash = keccak256(bytes(input.resultHash));
-        submittedCompletions[input.completionId] = true;
-        engine.completeJob(input.jobId, onchainResultHash);
+        bytes32 onchainResultHash = keccak256(bytes(attestation.resultHash));
+        submittedCompletions[metadata.completionId] = true;
+        engine.completeJob(attestation.jobId, onchainResultHash);
 
         if (address(receiptRegistry) != address(0)) {
             receiptRegistry.recordReceipt(
-                input.jobId,
+                attestation.jobId,
                 job.agentId,
                 job.creator,
                 attester,
                 job.taskHash,
                 onchainResultHash,
                 onchainResultHash,
-                input.metadataHash,
+                metadata.metadataHash,
                 block.timestamp,
-                input.completionId
+                metadata.completionId
             );
         }
 
-        activityId = activityRegistry.recordActivity(job.creator, block.chainid, input.activityType, input.projectId, input.metadataHash, true);
-        emit CompletionReported(input.jobId, job.agentId, job.creator, onchainResultHash, input.completionId, activityId, attester);
+        activityId = activityRegistry.recordActivity(job.creator, block.chainid, metadata.activityType, metadata.projectId, metadata.metadataHash, true);
+        emit CompletionReported(attestation.jobId, job.agentId, job.creator, onchainResultHash, metadata.completionId, activityId, attester);
     }
 }
