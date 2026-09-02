@@ -12,17 +12,14 @@ const RULES: Array<{ pattern: RegExp; kind: DropTaskKind; risk: DropTaskRisk; au
   { pattern: /mint|nft|erc-?721|erc-?1155/i, kind: "mint", risk: "medium", automated: true, wallet: true, gas: true },
   { pattern: /quest|task|campaign|galxe|layer3|zealy/i, kind: "quest", risk: "low", automated: false, wallet: false, gas: false },
   { pattern: /verify|verification|attest|proof/i, kind: "verify", risk: "low", automated: false, wallet: false, gas: false },
+  { pattern: /register\s+(the\s+)?chain|chain\s+registration/i, kind: "other", risk: "low", automated: true, wallet: true, gas: true },
+  { pattern: /record\s+(verified\s+)?activity|log\s+activity/i, kind: "other", risk: "low", automated: true, wallet: true, gas: true },
+  { pattern: /test\s+reward\s+flow|reward\s+flow/i, kind: "other", risk: "high", automated: true, wallet: true, gas: true },
 ];
 
-export interface TaskExtractorOptions {
-  source?: string;
-  defaultDeadline?: string;
-}
+export interface TaskExtractorOptions { source?: string; defaultDeadline?: string; }
 
-export function extractDropTasks(
-  opportunity: ProjectOpportunity,
-  options: TaskExtractorOptions = {},
-): TaskExtractionResult {
+export function extractDropTasks(opportunity: ProjectOpportunity, options: TaskExtractorOptions = {}): TaskExtractionResult {
   const warnings: string[] = [];
   const tasks: DropTask[] = [];
   const seen = new Set<string>();
@@ -36,14 +33,8 @@ export function extractDropTasks(
 
     const rule = RULES.find((candidate) => candidate.pattern.test(title));
     if (!rule) {
-      warnings.push(`No execution rule matched action: ${title}`);
-      tasks.push(makeTask(opportunity, title, {
-        kind: "other",
-        risk: "medium",
-        automated: false,
-        wallet: false,
-        gas: false,
-      }, options));
+      warnings.push(`No task classification rule matched action: ${title}`);
+      tasks.push(makeTask(opportunity, title, { kind: "other", risk: "medium", automated: false, wallet: false, gas: false }, options));
       continue;
     }
 
@@ -67,52 +58,29 @@ function makeTask(
   options: TaskExtractorOptions,
 ): DropTask {
   return {
-    id: stableTaskId(opportunity.id, title),
-    opportunityId: opportunity.id,
-    title,
+    id: stableTaskId(opportunity.id, title), opportunityId: opportunity.id, title,
     description: `Complete the documented project action: ${title}`,
-    kind: rule.kind,
-    risk: rule.risk,
-    automated: rule.automated,
-    requiresWallet: rule.wallet,
-    requiresGas: rule.gas,
+    kind: rule.kind, risk: rule.risk, automated: rule.automated,
+    requiresWallet: rule.wallet, requiresGas: rule.gas,
     requiresUserApproval: rule.risk !== "low" || rule.wallet,
-    rewardHint: opportunity.signals.rewardSignals !== undefined
-      ? `Reward signal ${opportunity.signals.rewardSignals}/100`
-      : undefined,
-    deadline: options.defaultDeadline,
-    prerequisites: [],
-    evidenceRequired: evidenceFor(rule.kind),
+    rewardHint: opportunity.signals.rewardSignals !== undefined ? `Reward signal ${opportunity.signals.rewardSignals}/100` : undefined,
+    deadline: options.defaultDeadline, prerequisites: [], evidenceRequired: evidenceFor(rule.kind),
     source: options.source ?? opportunity.sources[0] ?? "opportunity",
   };
 }
 
 function evidenceFor(kind: DropTaskKind): string[] {
   switch (kind) {
-    case "social":
-    case "community":
-    case "quest":
-      return ["external campaign proof or platform completion state"];
-    case "bridge":
-    case "swap":
-    case "liquidity":
-    case "stake":
-    case "deploy":
-    case "mint":
-      return ["transaction hash", "target chain", "wallet address"];
-    case "verify":
-      return ["verification or attestation reference"];
-    default:
-      return ["source-defined completion evidence"];
+    case "social": case "community": case "quest": return ["external campaign proof or platform completion state"];
+    case "bridge": case "swap": case "liquidity": case "stake": case "deploy": case "mint": return ["transaction hash", "target chain", "wallet address"];
+    case "verify": return ["verification or attestation reference"];
+    default: return ["source-defined completion evidence"];
   }
 }
 
 function stableTaskId(opportunityId: string, title: string): string {
   let hash = 2166136261;
   const value = `${opportunityId}:${title.trim().toLowerCase()}`;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
+  for (let i = 0; i < value.length; i += 1) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); }
   return `drop-task:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
