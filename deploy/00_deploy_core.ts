@@ -1,8 +1,9 @@
 import { network } from "hardhat";
+import { ethers } from "ethers";
 import { EVM_NETWORKS } from "./config/networks";
 import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
-import { saveDeployment } from "./utils/deployment";
+import { loadDeployment, saveDeployment } from "./utils/deployment";
 
 const target = process.env.AI_HUB_NETWORK;
 if (!target) {
@@ -14,8 +15,8 @@ if (!target) {
 validateDeploymentEnvironment(target);
 
 const config = EVM_NETWORKS[target];
-const { ethers } = await network.connect();
-const connectedChainId = Number((await ethers.provider.getNetwork()).chainId);
+const { ethers: hreEthers } = await network.connect();
+const connectedChainId = Number((await hreEthers.provider.getNetwork()).chainId);
 
 if (connectedChainId !== config.chainId) {
   throw new Error(
@@ -25,25 +26,96 @@ if (connectedChainId !== config.chainId) {
 
 const admin = requireEnv("AI_HUB_ADMIN_ADDRESS");
 
+const CORE_CONTRACTS = [
+  "PointsModule",
+  "RewardPolicyEngine",
+  "EligibilityEngine",
+  "ActivityRegistry",
+  "VerifierRegistry",
+  "ChainRegistry",
+  "ActivityReporter",
+  "RewardVault",
+  "ClaimRouter",
+] as const;
+
+type CoreContractName = (typeof CORE_CONTRACTS)[number];
+
+async function validateExistingCore(
+  contracts: Record<string, string>,
+): Promise<Record<CoreContractName, string>> {
+  const provider = hreEthers.provider;
+  const ownableAbi = ["function owner() view returns (address)"];
+
+  for (const name of CORE_CONTRACTS) {
+    const address = contracts[name];
+    if (!address || !hreEthers.isAddress(address)) {
+      throw new Error(`Existing ${target} deployment is incomplete: missing or invalid ${name}`);
+    }
+
+    const code = await provider.getCode(address);
+    if (code === "0x") {
+      throw new Error(`Existing ${target} deployment points ${name} to an address without contract code: ${address}`);
+    }
+
+    const ownerContract = new ethers.Contract(address, ownableAbi, provider);
+    const owner = await ownerContract.owner();
+    if (hreEthers.getAddress(owner) !== hreEthers.getAddress(admin)) {
+      throw new Error(
+        `Existing ${name} owner mismatch: ${owner}; expected AI_HUB_ADMIN_ADDRESS ${admin}`,
+      );
+    }
+  }
+
+  return Object.fromEntries(
+    CORE_CONTRACTS.map((name) => [name, contracts[name]]),
+  ) as Record<CoreContractName, string>;
+}
+
+let existing;
+try {
+  existing = await loadDeployment(target);
+} catch {
+  existing = undefined;
+}
+
+if (existing) {
+  const hasAnyCore = CORE_CONTRACTS.some((name) => Boolean(existing?.contracts[name]));
+  const hasAllCore = CORE_CONTRACTS.every((name) => Boolean(existing?.contracts[name]));
+
+  if (hasAnyCore && !hasAllCore) {
+    throw new Error(
+      `Existing ${target} deployment is partially populated. Refusing to redeploy core contracts automatically; repair the deployment artifact first.`,
+    );
+  }
+
+  if (hasAllCore) {
+    const contracts = await validateExistingCore(existing.contracts);
+    console.log(`AI Hub core already deployed to ${config.name} (${config.chainId}).`);
+    console.log("Reusing existing core contracts; no duplicate deployments will be created.");
+    for (const name of CORE_CONTRACTS) console.log(`${name}=${contracts[name]}`);
+    return;
+  }
+}
+
 console.log(`Deploying AI Hub core to ${config.name} (${config.chainId})`);
 
-const points = await ethers.deployContract("PointsModule", [admin]);
+const points = await hreEthers.deployContract("PointsModule", [admin]);
 await points.waitForDeployment();
-const policy = await ethers.deployContract("RewardPolicyEngine", [admin, points.target]);
+const policy = await hreEthers.deployContract("RewardPolicyEngine", [admin, points.target]);
 await policy.waitForDeployment();
-const eligibility = await ethers.deployContract("EligibilityEngine", [admin]);
+const eligibility = await hreEthers.deployContract("EligibilityEngine", [admin]);
 await eligibility.waitForDeployment();
-const registry = await ethers.deployContract("ActivityRegistry", [admin]);
+const registry = await hreEthers.deployContract("ActivityRegistry", [admin]);
 await registry.waitForDeployment();
-const verifierRegistry = await ethers.deployContract("VerifierRegistry", [admin]);
+const verifierRegistry = await hreEthers.deployContract("VerifierRegistry", [admin]);
 await verifierRegistry.waitForDeployment();
-const chainRegistry = await ethers.deployContract("ChainRegistry", [admin]);
+const chainRegistry = await hreEthers.deployContract("ChainRegistry", [admin]);
 await chainRegistry.waitForDeployment();
-const activityReporter = await ethers.deployContract("ActivityReporter", [admin, registry.target, chainRegistry.target]);
+const activityReporter = await hreEthers.deployContract("ActivityReporter", [admin, registry.target, chainRegistry.target]);
 await activityReporter.waitForDeployment();
-const vault = await ethers.deployContract("RewardVault", [admin]);
+const vault = await hreEthers.deployContract("RewardVault", [admin]);
 await vault.waitForDeployment();
-const router = await ethers.deployContract("ClaimRouter", [admin, eligibility.target, policy.target, vault.target]);
+const router = await hreEthers.deployContract("ClaimRouter", [admin, eligibility.target, policy.target, vault.target]);
 await router.waitForDeployment();
 
 await saveDeployment({
