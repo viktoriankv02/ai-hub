@@ -5,10 +5,21 @@ import { EVM_NETWORKS } from "../deploy/config/networks";
 
 const execFileAsync = promisify(execFile);
 
-const targets = (process.env.AI_HUB_NETWORKS ?? Object.keys(EVM_NETWORKS).join(","))
+const configuredTargets = process.env.AI_HUB_NETWORKS?.trim();
+if (!configuredTargets) {
+  throw new Error(
+    "AI_HUB_NETWORKS is required. Refusing to deploy to every configured testnet by default. Example: AI_HUB_NETWORKS=baseSepolia",
+  );
+}
+
+const targets = configuredTargets
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
+
+if (targets.length === 0) {
+  throw new Error("AI_HUB_NETWORKS must contain at least one network");
+}
 
 for (const target of targets) {
   const config = EVM_NETWORKS[target];
@@ -68,13 +79,8 @@ for (const target of targets) {
       maxBuffer: 10 * 1024 * 1024,
     });
 
-    if (stdout) {
-      process.stdout.write(stdout);
-    }
-
-    if (stderr) {
-      process.stderr.write(stderr);
-    }
+    if (stdout) process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
   }
 
   console.log(`\n${config.name}: core deployment and verification completed.`);
