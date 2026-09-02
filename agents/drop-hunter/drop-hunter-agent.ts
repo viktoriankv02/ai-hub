@@ -1,7 +1,6 @@
 import type { ScoredOpportunity } from "./types.js";
-import type { DiscoveryRegistryOptions, OpportunityDiscoveryRegistry } from "./discovery-registry.js";
+import type { DiscoveryRegistryOptions, DiscoverySource } from "./discovery-registry.js";
 import { OpportunityDiscoveryRegistry as Registry } from "./discovery-registry.js";
-import type { DiscoverySource } from "./discovery-registry.js";
 import { analyzeDropOpportunity, rankDropOpportunities, type DropIntelligenceResult } from "./drop-intelligence.js";
 
 export interface DropHunterAgentOptions extends DiscoveryRegistryOptions {
@@ -23,7 +22,7 @@ export interface DropHunterAgentResult {
  * funds; execution is a separate, approval-gated trust boundary.
  */
 export class DropHunterAgent {
-  private readonly registry: OpportunityDiscoveryRegistry;
+  private readonly registry: Registry;
   private readonly maxResults: number;
   private readonly minimumScore: number;
 
