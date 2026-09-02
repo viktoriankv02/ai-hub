@@ -7,6 +7,7 @@ export * from "./evidence-engine.js";
 export * from "./opportunity-monitor.js";
 export * from "./engine.js";
 export * from "./opportunity-source.js";
+export * from "./github-opportunity-source.js";
 export * from "./discovery-registry.js";
 export * from "./execution-gate.js";
 export * from "./execution-runner.js";
