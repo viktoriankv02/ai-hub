@@ -4,6 +4,7 @@ import type { AIJobRecord } from "./types.js";
 import type { OnchainJobBindingStore } from "./onchain-job-bindings.js";
 
 const ENGINE_ABI = [
+  "event JobCreated(uint256 indexed jobId,address indexed creator,uint256 indexed agentId,uint256 reward,bytes32 taskHash)",
   "function createJob(uint256 agentId, bytes32 taskHash, uint256 reward) returns (uint256 jobId)",
   "function assignJob(uint256 jobId)",
   "function jobs(uint256 jobId) view returns (uint256 id,address creator,uint256 agentId,bytes32 taskHash,uint256 reward,bool assigned,bool completed,uint256 createdAt,uint256 completedAt,bytes32 resultHash)",
