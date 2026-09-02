@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { AIJobExecutor, AIJobExecutionResult, AIJobRecord } from "./types.js";
 
+export type { AIJobExecutor } from "./types.js";
+
 export interface AIJobExecutionContext {
   executePrompt(job: AIJobRecord): Promise<string>;
 }

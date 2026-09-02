@@ -15,6 +15,7 @@ export interface AIJobRequest {
   reward: string;
   trigger?: AIJobTrigger;
   opportunityId?: string;
+  chainTargetId?: string;
   metadata?: Record<string, string>;
 }
 
