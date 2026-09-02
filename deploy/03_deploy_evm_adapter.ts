@@ -2,12 +2,12 @@ import { network } from "hardhat";
 import { EVM_NETWORKS } from "./config/networks";
 import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
-import { loadDeployment, saveDeployment } from "./utils/deployment";
+import { assertAddress, loadDeployment, saveDeployment, validateDeploymentRecord } from "./utils/deployment";
 
 const target = process.env.AI_HUB_NETWORK;
 if (!target) {
   throw new Error(
-    "Missing AI_HUB_NETWORK. Set it explicitly, for example: AI_HUB_NETWORK=baseSepolia",
+    "Missing AI_HUB_NETWORK. Set it explicitly, for example: AI_HUB_NETWORK=inkSepolia",
   );
 }
 
@@ -23,17 +23,23 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
-const admin = requireEnv("AI_HUB_ADMIN_ADDRESS");
+const admin = assertAddress("AI_HUB_ADMIN_ADDRESS", requireEnv("AI_HUB_ADMIN_ADDRESS"));
 const deployment = await loadDeployment(target);
+validateDeploymentRecord(deployment, target, config.chainId);
 
 let adapterAddress = deployment.contracts.EVMChainAdapter;
 
 if (!adapterAddress) {
   const adapter = await ethers.deployContract("EVMChainAdapter", [admin, config.chainId, ethers.id("EVM")]);
   await adapter.waitForDeployment();
-  adapterAddress = await adapter.getAddress();
-  console.log(`Deployed EVM adapter: ${adapterAddress}`);
+  adapterAddress = assertAddress("EVMChainAdapter", await adapter.getAddress());
+  deployment.contracts.EVMChainAdapter = adapterAddress;
+  await saveDeployment(deployment);
+  console.log(`Deployed EVM adapter and persisted address: ${adapterAddress}`);
 } else {
+  adapterAddress = assertAddress("EVMChainAdapter", adapterAddress);
+  const code = await ethers.provider.getCode(adapterAddress);
+  if (code === "0x") throw new Error(`EVM adapter ${adapterAddress} has no contract code`);
   const adapter = await ethers.getContractAt("EVMChainAdapter", adapterAddress);
   if ((await adapter.chainId()) !== BigInt(config.chainId)) {
     throw new Error(`Existing EVM adapter chainId mismatch: ${await adapter.chainId()}`);
@@ -72,10 +78,6 @@ if (!registered) {
 await saveDeployment({
   ...deployment,
   deployedAt: new Date().toISOString(),
-  contracts: {
-    ...deployment.contracts,
-    EVMChainAdapter: adapterAddress,
-  },
 });
 
 console.log(`EVM adapter and ${config.name} registration ready.`);
