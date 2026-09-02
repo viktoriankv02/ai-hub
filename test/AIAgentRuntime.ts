@@ -1,5 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
+
+const { ethers } = await network.connect();
 
 describe("AIAgentRuntime", function () {
   it("exposes a complete agent view for adapters and indexers", async function () {
