@@ -1,10 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { AIJobService } from "./service.js";
 import type { AIJobRequest } from "./types.js";
+import type { DropHunterAgent } from "../drop-hunter/drop-hunter-agent.js";
 
 export interface AIJobHttpApiOptions {
   token?: string;
   maxBodyBytes?: number;
+  dropHunter?: DropHunterAgent;
 }
 
 export interface AIJobHttpServerOptions extends AIJobHttpApiOptions {
@@ -15,6 +17,7 @@ export interface AIJobHttpServerOptions extends AIJobHttpApiOptions {
 export class AIJobHttpApi {
   private readonly token?: string;
   private readonly maxBodyBytes: number;
+  private readonly dropHunter?: DropHunterAgent;
 
   constructor(
     private readonly service: AIJobService,
@@ -22,6 +25,7 @@ export class AIJobHttpApi {
   ) {
     this.token = options.token?.trim() || undefined;
     this.maxBodyBytes = options.maxBodyBytes ?? 1_000_000;
+    this.dropHunter = options.dropHunter;
 
     if (!Number.isInteger(this.maxBodyBytes) || this.maxBodyBytes < 1) {
       throw new Error("maxBodyBytes must be a positive integer");
@@ -44,7 +48,17 @@ export class AIJobHttpApi {
       const path = url.pathname;
 
       if (req.method === "GET" && path === "/health") {
-        this.write(res, 200, { status: "ok", service: "ai-job-control-plane" });
+        this.write(res, 200, { status: "ok", service: "ai-job-control-plane", dropHunter: Boolean(this.dropHunter) });
+        return;
+      }
+
+      if (req.method === "GET" && path === "/opportunities") {
+        if (!this.dropHunter) {
+          this.write(res, 503, { error: "drop_hunter_not_configured" });
+          return;
+        }
+        const report = await this.dropHunter.scan();
+        this.write(res, 200, report);
         return;
       }
 
