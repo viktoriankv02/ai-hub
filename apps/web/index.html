@@ -3,53 +3,85 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Hub Drop Hunter — opportunity intelligence and approval-gated AI jobs." />
   <title>AI Hub — Drop Hunter</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">AI</span><span>AI Hub</span></div>
-    <div class="network"><span class="dot"></span> <span id="network-label">Ink Sepolia</span></div>
-    <div class="row-actions"><span id="api-status" class="badge">API connecting…</span><button id="connect" class="button secondary">Connect wallet</button></div>
+    <a class="brand" href="#top" aria-label="AI Hub home"><span class="brand-mark">AI</span><span>AI Hub</span></a>
+    <div class="network"><span class="dot"></span><span id="network-label">Ink Sepolia</span></div>
+    <div class="row-actions">
+      <span id="api-status" class="badge">API connecting…</span>
+      <button id="connect" class="button secondary">Connect wallet</button>
+    </div>
   </header>
 
-  <main class="shell">
+  <main id="top" class="shell">
     <section class="hero">
       <div>
         <p class="eyebrow">OPPORTUNITY INTELLIGENCE</p>
         <h1>Drop Hunter</h1>
-        <p class="muted">Discover campaigns, score opportunities, and turn project tasks into approval-gated AI jobs.</p>
+        <p class="muted">Discover campaigns, score opportunities, extract actionable tasks, and prepare them for an approval-gated AI execution queue.</p>
       </div>
-      <div class="hero-actions"><button id="scan" class="button primary">Scan opportunities</button></div>
+      <div class="hero-actions">
+        <button id="scan" class="button primary">Scan opportunities</button>
+      </div>
     </section>
 
     <section class="stats" aria-label="Drop Hunter summary">
-      <article><span>Opportunities</span><strong id="opportunities">0</strong></article>
-      <article><span>High score</span><strong id="high-score">0</strong></article>
-      <article><span>Tasks ready</span><strong id="tasks">0</strong></article>
-      <article><span>Awaiting approval</span><strong id="approval">0</strong></article>
+      <article><span>Opportunities</span><strong id="opportunities">0</strong><small>discovered</small></article>
+      <article><span>High score</span><strong id="high-score">0</strong><small>85+ intelligence score</small></article>
+      <article><span>Tasks ready</span><strong id="tasks">0</strong><small>automatable or prepared</small></article>
+      <article><span>Awaiting approval</span><strong id="approval">0</strong><small>wallet/user boundary</small></article>
     </section>
 
     <section class="toolbar">
-      <div class="tabs"><button class="tab active" data-filter="all">All</button><button class="tab" data-filter="high">Top score</button><button class="tab" data-filter="approval">Needs approval</button></div>
-      <select id="chain"><option>All networks</option><option>Ink Sepolia</option><option>Base Sepolia</option><option>Ethereum Sepolia</option><option>Plasma Testnet</option><option>Arc Testnet</option><option>Tempo Testnet (Moderato)</option></select>
+      <div class="tabs" role="tablist" aria-label="Opportunity filters">
+        <button class="tab active" data-filter="all">All</button>
+        <button class="tab" data-filter="high">Top score</button>
+        <button class="tab" data-filter="approval">Needs approval</button>
+      </div>
+      <select id="chain" aria-label="Filter by network">
+        <option>All networks</option>
+        <option>Ink Sepolia</option>
+        <option>Base Sepolia</option>
+        <option>Ethereum Sepolia</option>
+        <option>Plasma Testnet</option>
+        <option>Arc Testnet</option>
+        <option>Tempo Testnet (Moderato)</option>
+      </select>
     </section>
 
-    <section id="opportunity-list" class="opportunity-list"></section>
+    <section id="opportunity-list" class="opportunity-list" aria-live="polite"></section>
 
     <section class="agent-panel">
-      <div>
+      <div class="panel-heading">
         <p class="eyebrow">AI AGENT</p>
         <h2>Execution queue</h2>
-        <p class="muted">Jobs are persisted by the local control plane. Wallet actions remain behind explicit approval.</p>
+        <p class="muted">The control plane persists jobs. Wallet transactions are never silently signed and remain behind explicit approval.</p>
       </div>
-      <div class="row-actions">
+      <div class="panel-actions">
         <button id="plan" class="button primary">Prepare eligible tasks</button>
         <button id="refresh-jobs" class="button secondary">Refresh</button>
       </div>
       <div id="queue" class="queue"></div>
     </section>
   </main>
+
+  <dialog id="task-dialog" class="dialog">
+    <div class="dialog-header">
+      <div>
+        <p class="eyebrow">OPPORTUNITY DETAILS</p>
+        <h2 id="dialog-title">Tasks</h2>
+      </div>
+      <button id="dialog-close" class="icon-button" aria-label="Close">×</button>
+    </div>
+    <div id="dialog-summary" class="dialog-summary"></div>
+    <div id="dialog-tasks" class="dialog-tasks"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
