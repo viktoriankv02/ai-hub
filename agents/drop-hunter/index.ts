@@ -21,3 +21,4 @@ export * from "./scheduler.js";
 export * from "./task-model.js";
 export * from "./task-extractor.js";
 export * from "./drop-intelligence.js";
+export * from "./drop-hunter-agent.js";
