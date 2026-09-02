@@ -15,10 +15,17 @@ export interface GitHubSearchResponse {
   items?: unknown;
 }
 
+export interface GitHubResponse {
+  ok: boolean;
+  status: number;
+  headers?: { get(name: string): string | null };
+  json(): Promise<unknown>;
+}
+
 export type GitHubOpportunityFetcher = (
   input: string,
   init?: { method?: string; headers?: Record<string, string>; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+) => Promise<GitHubResponse>;
 
 export interface GitHubRepositoryOpportunitySourceOptions {
   queries: string[];
@@ -78,45 +85,78 @@ export class GitHubRepositoryOpportunitySource implements AsyncOpportunitySource
   async discover(): Promise<ProjectOpportunity[]> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const results: ProjectOpportunity[] = [];
+    const failures: string[] = [];
+
     try {
-      const results: ProjectOpportunity[] = [];
       for (const query of this.queries) {
-        const url = new URL(API);
-        url.searchParams.set("q", query);
-        url.searchParams.set("sort", "updated");
-        url.searchParams.set("order", "desc");
-        url.searchParams.set("per_page", String(this.maxResults));
+        try {
+          const response = await this.search(query, controller.signal);
+          const payload = (await response.json()) as GitHubSearchResponse;
+          if (!Array.isArray(payload.items)) {
+            throw new Error("GitHub repository search response has no items array");
+          }
 
-        const headers: Record<string, string> = {
-          Accept: "application/vnd.github+json",
-          "User-Agent": "AI-Hub-Drop-Hunter",
-        };
-        if (this.token) headers.Authorization = `Bearer ${this.token}`;
-
-        const response = await this.fetcher(url.toString(), {
-          method: "GET",
-          headers,
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`GitHub repository search returned HTTP ${response.status}`);
-        const payload = (await response.json()) as GitHubSearchResponse;
-        if (!Array.isArray(payload.items)) throw new Error("GitHub repository search response has no items array");
-
-        for (const item of payload.items) {
-          const opportunity = toOpportunity(item);
-          if (opportunity) results.push(opportunity);
+          for (const item of payload.items) {
+            const opportunity = toOpportunity(item);
+            if (opportunity) results.push(opportunity);
+          }
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new Error(`GitHub discovery timed out after ${this.timeoutMs}ms`);
+          }
+          failures.push(`${query}: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+
+      if (results.length === 0 && failures.length > 0) {
+        throw new Error(`All GitHub discovery queries failed: ${failures.join(" | ")}`);
       }
 
       const byId = new Map(results.map((item) => [item.id, item]));
       return [...byId.values()].slice(0, this.maxResults * Math.max(1, this.queries.length));
-    } catch (error) {
-      if (controller.signal.aborted) throw new Error(`GitHub discovery timed out after ${this.timeoutMs}ms`);
-      throw error;
     } finally {
       clearTimeout(timer);
     }
   }
+
+  private async search(query: string, signal: AbortSignal): Promise<GitHubResponse> {
+    const url = new URL(API);
+    url.searchParams.set("q", query);
+    url.searchParams.set("sort", "updated");
+    url.searchParams.set("order", "desc");
+    url.searchParams.set("per_page", String(this.maxResults));
+
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "AI-Hub-Drop-Hunter",
+    };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+
+    const response = await this.fetcher(url.toString(), {
+      method: "GET",
+      headers,
+      signal,
+    });
+    if (!response.ok) throw githubHttpError(response);
+    return response;
+  }
+}
+
+function githubHttpError(response: GitHubResponse): Error {
+  const status = response.status;
+  if (status === 403 || status === 429) {
+    const retryAfter = response.headers?.get("retry-after");
+    const reset = response.headers?.get("x-ratelimit-reset");
+    const details: string[] = [];
+    if (retryAfter) details.push(`Retry-After=${retryAfter}s`);
+    if (reset) {
+      const resetAt = Number(reset);
+      if (Number.isFinite(resetAt)) details.push(`rate-limit-reset=${new Date(resetAt * 1000).toISOString()}`);
+    }
+    return new Error(`GitHub repository search rate limited (HTTP ${status})${details.length ? `; ${details.join(", ")}` : ""}`);
+  }
+  return new Error(`GitHub repository search returned HTTP ${status}`);
 }
 
 function toOpportunity(item: GitHubRepositoryItem): ProjectOpportunity | undefined {
