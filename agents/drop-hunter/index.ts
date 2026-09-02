@@ -18,3 +18,6 @@ export * from "./transaction-monitor.js";
 export * from "./evm-execution-adapter.js";
 export * from "./service.js";
 export * from "./scheduler.js";
+export * from "./task-model.js";
+export * from "./task-extractor.js";
+export * from "./drop-intelligence.js";
