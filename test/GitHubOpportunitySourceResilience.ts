@@ -64,7 +64,6 @@ describe("GitHub Drop Hunter source resilience", function () {
     });
 
     await expect(source.discover())
-      .to.be.rejectedWith(/All GitHub discovery queries failed/)
-      .and.to.be.rejectedWith(/Retry-After=60s/);
+      .to.be.rejectedWith(/All GitHub discovery queries failed.*Retry-After=60s/);
   });
 });
