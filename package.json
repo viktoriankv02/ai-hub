@@ -17,7 +17,8 @@
     "ai-jobs:smoke": "tsx scripts/ai-job-smoke.ts",
     "ai-jobs:worker": "tsx scripts/ai-job-worker.ts",
     "ai-jobs:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-ai-hub-storage.ps1",
-    "web:dev": "node scripts/web-server.mjs"
+    "web:dev": "node scripts/web-server.mjs",
+    "dev": "node scripts/dev-stack.mjs"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
