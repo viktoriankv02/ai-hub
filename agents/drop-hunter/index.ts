@@ -17,6 +17,7 @@ export * from "./execution-idempotency.js";
 export * from "./execution-store.js";
 export * from "./transaction-monitor.js";
 export * from "./evm-execution-adapter.js";
+export * from "./evm-action-adapter.js";
 export * from "./service.js";
 export * from "./scheduler.js";
 export * from "./task-model.js";
