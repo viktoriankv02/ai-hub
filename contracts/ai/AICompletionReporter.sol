@@ -133,19 +133,42 @@ contract AICompletionReporter is Ownable {
         bytes32 metadataHash,
         bytes32 completionId
     ) external onlyAuthorizedCaller returns (uint256 activityId) {
-        CompletionInput memory input = CompletionInput({
-            jobId: jobId,
-            agentId: agentId,
-            taskHash: taskHash,
-            resultHash: resultHash,
-            completedAt: completedAt,
-            signature: signature,
-            activityType: activityType,
-            projectId: projectId,
-            metadataHash: metadataHash,
-            completionId: completionId
-        });
-        return _submitVerifiedCompletion(input);
+        return _submitVerifiedCompletion(_buildCompletionInput(
+            jobId,
+            agentId,
+            taskHash,
+            resultHash,
+            completedAt,
+            signature,
+            activityType,
+            projectId,
+            metadataHash,
+            completionId
+        ));
+    }
+
+    function _buildCompletionInput(
+        uint256 jobId,
+        string calldata agentId,
+        string calldata taskHash,
+        string calldata resultHash,
+        string calldata completedAt,
+        bytes calldata signature,
+        bytes32 activityType,
+        bytes32 projectId,
+        bytes32 metadataHash,
+        bytes32 completionId
+    ) internal pure returns (CompletionInput memory input) {
+        input.jobId = jobId;
+        input.agentId = agentId;
+        input.taskHash = taskHash;
+        input.resultHash = resultHash;
+        input.completedAt = completedAt;
+        input.signature = signature;
+        input.activityType = activityType;
+        input.projectId = projectId;
+        input.metadataHash = metadataHash;
+        input.completionId = completionId;
     }
 
     function _submitVerifiedCompletion(CompletionInput memory input) internal returns (uint256 activityId) {
