@@ -124,6 +124,30 @@ contract AICompletionReporter is Ownable {
         ));
     }
 
+    /// @notice Backward-compatible completion path for callers using the original
+    ///         bytes32 result API. The signed attestation path remains available
+    ///         through the overload below.
+    function submitVerifiedCompletion(
+        uint256 jobId,
+        bytes32 resultHash,
+        bytes32 activityType,
+        bytes32 projectId,
+        bytes32 metadataHash,
+        bytes32 completionId
+    ) external onlyAuthorizedCaller returns (uint256 activityId) {
+        if (resultHash == bytes32(0)) revert EmptyResultHash();
+        if (completionId == bytes32(0) || submittedCompletions[completionId]) revert CompletionAlreadySubmitted();
+
+        IAIAgentEngineCompletion.AIJob memory job = engine.jobs(jobId);
+        if (job.id != jobId || !job.assigned) revert InvalidJob();
+        if (job.completed) revert JobAlreadyCompleted();
+
+        submittedCompletions[completionId] = true;
+        engine.completeJob(jobId, resultHash);
+        activityId = activityRegistry.recordActivity(job.creator, block.chainid, activityType, projectId, metadataHash, true);
+        emit CompletionReported(jobId, job.agentId, job.creator, resultHash, completionId, activityId, msg.sender);
+    }
+
     function submitVerifiedCompletion(
         uint256 jobId,
         string calldata agentId,
