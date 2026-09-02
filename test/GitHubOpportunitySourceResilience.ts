@@ -24,7 +24,7 @@ describe("GitHub Drop Hunter source resilience", function () {
       queries: ["broken query", "working query"],
       fetcher: async (url) => {
         calls += 1;
-        if (url.includes("broken%20query")) return response(503, {});
+        if (new URL(url).searchParams.get("q") === "broken query") return response(503, {});
         return response(200, {
           items: [{
             full_name: "example/working",
