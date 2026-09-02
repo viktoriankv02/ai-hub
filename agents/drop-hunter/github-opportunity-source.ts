@@ -186,7 +186,7 @@ function toOpportunity(item: GitHubRepositoryItem): ProjectOpportunity | undefin
     signals,
     sources: [url, `https://api.github.com/repos/${fullName}`],
     actions: actions.length > 0 ? actions : ["verify"],
-    notes: `Discovered from public GitHub repository metadata; no reward or eligibility claim inferred.${updatedAt ? ` Repository updated ${updatedAt}.` : ""}`,
+    notes: `Discovered from public GitHub repository metadata; reward/eligibility signals are keyword-derived evidence only and are not claims of eligibility or payout.${updatedAt ? ` Repository updated ${updatedAt}.` : ""}`,
   };
 }
 
@@ -203,14 +203,16 @@ function inferActions(text: string): string[] {
 }
 
 function inferSignals(text: string, stage: OpportunityStage, actions: string[]): ProjectOpportunity["signals"] {
+  const explicitReward = /(airdrop|points|rewards|reward)/.test(text);
+  const incentiveProgram = /(incentivized|incentive)/.test(text);
   const signals: ProjectOpportunity["signals"] = {
     testnetActivity: stage === "testnet" ? 80 : undefined,
     mainnetReadiness: stage === "mainnet" ? 70 : undefined,
     developerProgram: stage === "builder-program" ? 80 : undefined,
-    rewardSignals: stage === "incentivized" ? 75 : undefined,
+    rewardSignals: explicitReward ? 75 : incentiveProgram ? 60 : undefined,
     onchainVerifiability: actions.some((action) => ["bridge", "swap", "liquidity", "stake", "deploy", "mint"].includes(action)) ? 70 : undefined,
     ecosystemActivity: /(community|discord|telegram|campaign|hackathon|ecosystem)/.test(text) ? 65 : undefined,
-    timing: 50,
+    timing: stage === "testnet" || stage === "builder-program" ? 50 : undefined,
   };
   return signals;
 }
