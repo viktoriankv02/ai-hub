@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Hub — Drop Hunter</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">AI</span><span>AI Hub</span></div>
+    <div class="network"><span class="dot"></span> Ink Sepolia</div>
+    <button id="connect" class="button secondary">Connect wallet</button>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">OPPORTUNITY INTELLIGENCE</p>
+        <h1>Drop Hunter</h1>
+        <p class="muted">Discover campaigns, score opportunities, and turn project tasks into approval-gated AI jobs.</p>
+      </div>
+      <div class="hero-actions"><button id="scan" class="button primary">Scan opportunities</button></div>
+    </section>
+
+    <section class="stats" aria-label="Drop Hunter summary">
+      <article><span>Opportunities</span><strong id="opportunities">12</strong></article>
+      <article><span>High score</span><strong id="high-score">4</strong></article>
+      <article><span>Tasks ready</span><strong id="tasks">27</strong></article>
+      <article><span>Awaiting approval</span><strong id="approval">3</strong></article>
+    </section>
+
+    <section class="toolbar">
+      <div class="tabs"><button class="tab active" data-filter="all">All</button><button class="tab" data-filter="high">Top score</button><button class="tab" data-filter="approval">Needs approval</button></div>
+      <select id="chain"><option>All networks</option><option>Ink Sepolia</option><option>Base Sepolia</option><option>Ethereum Sepolia</option></select>
+    </section>
+
+    <section id="opportunity-list" class="opportunity-list"></section>
+
+    <section class="agent-panel">
+      <div><p class="eyebrow">AI AGENT</p><h2>Execution queue</h2><p class="muted">The agent analyzes and prepares tasks. Wallet actions remain behind explicit approval.</p></div>
+      <div class="queue"><span class="queue-item done">✓ 18 completed</span><span class="queue-item running">● 1 analyzing</span><span class="queue-item waiting">3 awaiting approval</span></div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
