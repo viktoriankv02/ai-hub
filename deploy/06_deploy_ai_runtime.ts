@@ -107,67 +107,66 @@ if (hasAllRuntime) {
   console.log("Reusing existing AI runtime contracts; no duplicate deployments will be created.");
   for (const name of RUNTIME_CONTRACTS) console.log(`${name}=${existing.contracts[name]}`);
   console.log("Next: run 07_configure_ai_runtime.ts if configuration has not been applied.");
-  return;
-}
+} else {
+  let rewardToken = process.env.AI_REWARD_TOKEN_ADDRESS;
 
-let rewardToken = process.env.AI_REWARD_TOKEN_ADDRESS;
+  if (!rewardToken) {
+    if (!config.testnet) {
+      throw new Error(
+        "AI_REWARD_TOKEN_ADDRESS is required for non-testnet deployments.",
+      );
+    }
 
-if (!rewardToken) {
-  if (!config.testnet) {
-    throw new Error(
-      "AI_REWARD_TOKEN_ADDRESS is required for non-testnet deployments.",
-    );
+    console.log("No AI_REWARD_TOKEN_ADDRESS configured; deploying MockRewardToken for this testnet.");
+
+    const token = await hreEthers.deployContract("MockRewardToken");
+    await token.waitForDeployment();
+    rewardToken = await token.getAddress();
+
+    console.log(`Test reward token deployed: ${rewardToken}`);
+  } else {
+    console.log(`Using reward token: ${rewardToken}`);
   }
 
-  console.log("No AI_REWARD_TOKEN_ADDRESS configured; deploying MockRewardToken for this testnet.");
+  console.log(`Deploying AI runtime to ${config.name} (${config.chainId})`);
+  console.log(`ActivityRegistry=${activityRegistry}`);
+  console.log(`RewardToken=${rewardToken}`);
 
-  const token = await hreEthers.deployContract("MockRewardToken");
-  await token.waitForDeployment();
-  rewardToken = await token.getAddress();
+  const runtime = await hreEthers.deployContract("AIAgentRuntime", [admin]);
+  await runtime.waitForDeployment();
 
-  console.log(`Test reward token deployed: ${rewardToken}`);
-} else {
-  console.log(`Using reward token: ${rewardToken}`);
+  const engine = await hreEthers.deployContract("AIAgentEngine", [
+    admin,
+    runtime.target,
+    rewardToken,
+  ]);
+  await engine.waitForDeployment();
+
+  const reporter = await hreEthers.deployContract("AICompletionReporter", [
+    admin,
+    engine.target,
+    activityRegistry,
+  ]);
+  await reporter.waitForDeployment();
+
+  await saveDeployment({
+    ...existing,
+    network: target,
+    chainId: config.chainId,
+    deployedAt: new Date().toISOString(),
+    contracts: {
+      ...existing.contracts,
+      RewardToken: rewardToken,
+      AIAgentRuntime: runtime.target.toString(),
+      AIAgentEngine: engine.target.toString(),
+      AICompletionReporter: reporter.target.toString(),
+    },
+  });
+
+  console.log("AI runtime deployment completed.");
+  console.log(`RewardToken=${rewardToken}`);
+  console.log(`AIAgentRuntime=${runtime.target}`);
+  console.log(`AIAgentEngine=${engine.target}`);
+  console.log(`AICompletionReporter=${reporter.target}`);
+  console.log("Next: run 07_configure_ai_runtime.ts.");
 }
-
-console.log(`Deploying AI runtime to ${config.name} (${config.chainId})`);
-console.log(`ActivityRegistry=${activityRegistry}`);
-console.log(`RewardToken=${rewardToken}`);
-
-const runtime = await hreEthers.deployContract("AIAgentRuntime", [admin]);
-await runtime.waitForDeployment();
-
-const engine = await hreEthers.deployContract("AIAgentEngine", [
-  admin,
-  runtime.target,
-  rewardToken,
-]);
-await engine.waitForDeployment();
-
-const reporter = await hreEthers.deployContract("AICompletionReporter", [
-  admin,
-  engine.target,
-  activityRegistry,
-]);
-await reporter.waitForDeployment();
-
-await saveDeployment({
-  ...existing,
-  network: target,
-  chainId: config.chainId,
-  deployedAt: new Date().toISOString(),
-  contracts: {
-    ...existing.contracts,
-    RewardToken: rewardToken,
-    AIAgentRuntime: runtime.target.toString(),
-    AIAgentEngine: engine.target.toString(),
-    AICompletionReporter: reporter.target.toString(),
-  },
-});
-
-console.log("AI runtime deployment completed.");
-console.log(`RewardToken=${rewardToken}`);
-console.log(`AIAgentRuntime=${runtime.target}`);
-console.log(`AIAgentEngine=${engine.target}`);
-console.log(`AICompletionReporter=${reporter.target}`);
-console.log("Next: run 07_configure_ai_runtime.ts.");
