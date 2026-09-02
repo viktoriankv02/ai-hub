@@ -123,21 +123,11 @@ contract AICompletionReporter is Ownable {
         if (bytes(resultHash).length == 0) revert EmptyResultHash();
         if (completionId == bytes32(0) || submittedCompletions[completionId]) revert CompletionAlreadySubmitted();
 
-        (
-            uint256 idValue,
-            address creator,
-            uint256 agentIdValue,
-            bytes32 taskHashValue,
-            ,
-            bool assigned,
-            bool completed,
-            ,
-            ,
-        ) = engine.jobs(jobId);
+        IAIAgentEngineCompletion.AIJob memory job = engine.jobs(jobId);
 
-        if (idValue != jobId || !assigned) revert InvalidJob();
-        if (completed) revert JobAlreadyCompleted();
-        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != taskHashValue) revert InvalidAttestation();
+        if (job.id != jobId || !job.assigned) revert InvalidJob();
+        if (job.completed) revert JobAlreadyCompleted();
+        if (bytes(completedAt).length == 0 || keccak256(bytes(taskHash)) != job.taskHash) revert InvalidAttestation();
 
         address attester = completionDigest(jobId, agentId, taskHash, resultHash, completedAt).recover(signature);
         if (!attesters[attester]) revert UnauthorizedAttester();
@@ -150,10 +140,10 @@ contract AICompletionReporter is Ownable {
         if (address(receiptRegistry) != address(0)) {
             receiptRegistry.recordReceipt(
                 jobId,
-                agentIdValue,
-                creator,
+                job.agentId,
+                job.creator,
                 attester,
-                taskHashValue,
+                job.taskHash,
                 onchainResultHash,
                 onchainResultHash,
                 metadataHash,
@@ -162,7 +152,7 @@ contract AICompletionReporter is Ownable {
             );
         }
 
-        activityId = activityRegistry.recordActivity(creator, block.chainid, activityType, projectId, metadataHash, true);
-        emit CompletionReported(jobId, agentIdValue, creator, onchainResultHash, completionId, activityId, attester);
+        activityId = activityRegistry.recordActivity(job.creator, block.chainid, activityType, projectId, metadataHash, true);
+        emit CompletionReported(jobId, job.agentId, job.creator, onchainResultHash, completionId, activityId, attester);
     }
 }
