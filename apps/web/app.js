@@ -1,12 +1,11 @@
 const API = globalThis.AI_HUB_API ?? "http://127.0.0.1:8787";
 
 const fallbackOpportunities = [
-  { id:"ink-sepolia", name:"Ink Sepolia", chainId:763373, score:94, confidence:82, rewardPotential:70, risk:35, effort:40, freshness:96, stage:"testnet", tasks:[{id:"demo-deploy-erc20",title:"Deploy ERC20",description:"Deploy a documented ERC20 contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true},{id:"demo-deploy-nft",title:"Deploy NFT",description:"Deploy a documented NFT contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true},{id:"demo-verify",title:"Verify contract",description:"Verify deployment evidence and contract metadata.",kind:"verify",risk:"low",automated:true,requiresWallet:false,requiresGas:false,requiresUserApproval:false}] },
-  { id:"base-sepolia", name:"Base Sepolia", chainId:84532, score:89, confidence:78, rewardPotential:65, risk:42, effort:46, freshness:91, stage:"testnet", tasks:[{id:"demo-core",title:"Deploy core",description:"Deploy the documented core contract set.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true},{id:"demo-adapter",title:"Deploy EVM adapter",description:"Deploy the trusted EVM adapter configuration.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true},{id:"demo-record",title:"Record verified activity",description:"Record completion evidence after the transaction succeeds.",kind:"other",risk:"medium",automated:true,requiresWallet:true,requiresGas:false,requiresUserApproval:true}] },
+  { id:"ink-sepolia", name:"Ink Sepolia", chainId:763373, score:94, confidence:82, rewardPotential:70, risk:35, effort:40, freshness:96, stage:"testnet", tasks:[{id:"demo-deploy-erc20",title:"Deploy ERC20",description:"Deploy a documented ERC20 contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-deploy-nft",title:"Deploy NFT",description:"Deploy a documented NFT contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-verify",title:"Verify contract",description:"Verify deployment evidence and contract metadata.",kind:"verify",risk:"low",automated:true,requiresWallet:false,requiresGas:false,requiresUserApproval:false,source:"Demo data"}] },
+  { id:"base-sepolia", name:"Base Sepolia", chainId:84532, score:89, confidence:78, rewardPotential:65, risk:42, effort:46, freshness:91, stage:"testnet", tasks:[{id:"demo-core",title:"Deploy core",description:"Deploy the documented core contract set.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-adapter",title:"Deploy EVM adapter",description:"Deploy the trusted EVM adapter configuration.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-record",title:"Record verified activity",description:"Record completion evidence after the transaction succeeds.",kind:"other",risk:"medium",automated:true,requiresWallet:true,requiresGas:false,requiresUserApproval:true,source:"Demo data"}] },
 ];
 
 const chainNames = new Map([[763373,"Ink Sepolia"],[84532,"Base Sepolia"],[11155111,"Ethereum Sepolia"],[9746,"Plasma Testnet"],[5042002,"Arc Testnet"],[42431,"Tempo Testnet (Moderato)"]]);
-const riskRank = { low: 1, medium: 2, high: 3 };
 let opportunities = [];
 let filter = "all";
 let selected = null;
@@ -37,6 +36,18 @@ function normalizeReport(report) {
   }));
 }
 
+function sourceLabel(source) {
+  if (!source) return "Unknown source";
+  try { return new URL(source).hostname.replace(/^www\./, ""); } catch { return source; }
+}
+
+function rewardLabel(value) {
+  if (value >= 75) return "Strong reward evidence";
+  if (value >= 60) return "Reward evidence detected";
+  if (value > 0) return "Weak reward signal";
+  return "No reward evidence";
+}
+
 function renderStats() {
   const allTasks = opportunities.flatMap((o) => o.tasks);
   $("#opportunities").textContent = opportunities.length;
@@ -57,14 +68,16 @@ function render() {
   $("#opportunity-list").innerHTML = visible.map((o) => {
     const topReasons = (o.reasons ?? []).slice(0, 3);
     const approvalCount = o.tasks.filter((t) => t.requiresUserApproval).length;
+    const reward = o.rewardPotential ?? 0;
     const stage = String(o.stage ?? "research").replaceAll("-", " ");
+    const sources = (o.sources ?? []).slice(0, 2);
     return `
       <article class="opportunity">
         <div class="opportunity-main">
           <div class="title-row"><h3>${escapeHtml(o.name)}</h3><span class="badge">${escapeHtml(chainNames.get(o.chainId) ?? String(o.chainId ?? "Unknown"))}</span><span class="stage">${escapeHtml(stage)}</span></div>
-          <div class="meta">${o.tasks.length} task${o.tasks.length === 1 ? "" : "s"} · confidence ${o.confidence ?? "—"}/100 · reward signal ${o.rewardPotential ?? 0}/100 · risk ${o.risk ?? "—"}/100</div>
+          <div class="meta">${o.tasks.length} task${o.tasks.length === 1 ? "" : "s"} · confidence ${o.confidence ?? "—"}/100 · reward signal ${reward}/100 · risk ${o.risk ?? "—"}/100</div>
           <div class="tasks">${o.tasks.slice(0, 5).map((t) => `<span class="task ${t.requiresUserApproval ? "approval" : "ready"}"><span class="task-dot"></span>${escapeHtml(t.title)}</span>`).join("")}${o.tasks.length > 5 ? `<span class="task more">+${o.tasks.length - 5} more</span>` : ""}</div>
-          ${topReasons.length ? `<div class="reasons">${topReasons.map((reason) => `<span>• ${escapeHtml(reason)}</span>`).join("")}</div>` : ""}
+          <div class="reasons"><span>• ${escapeHtml(rewardLabel(reward))}</span>${sources.map((source) => `<span>• Source: ${escapeHtml(sourceLabel(source))}</span>`).join("")}${topReasons.slice(0, 2).map((reason) => `<span>• ${escapeHtml(reason)}</span>`).join("")}</div>
         </div>
         <div class="opportunity-side">
           <div class="score">${o.score}<small>/ 100</small></div>
@@ -82,21 +95,30 @@ function render() {
 function showTasks(id) {
   selected = opportunities.find((o) => o.id === id);
   if (!selected) return;
+  const reward = selected.rewardPotential ?? 0;
+  const warnings = selected.warnings ?? [];
   $("#dialog-title").textContent = selected.name;
   $("#dialog-summary").innerHTML = `
     <div><span>Score</span><strong>${selected.score}/100</strong></div>
     <div><span>Confidence</span><strong>${selected.confidence ?? "—"}/100</strong></div>
+    <div><span>Reward signal</span><strong>${reward}/100</strong></div>
     <div><span>Risk</span><strong>${selected.risk ?? "—"}/100</strong></div>
     <div><span>Tasks</span><strong>${selected.tasks.length}</strong></div>`;
-  $("#dialog-tasks").innerHTML = selected.tasks.map((task) => `
+  $("#dialog-tasks").innerHTML = `${warnings.length ? `<div class="reasons">${warnings.map((warning) => `<span>⚠ ${escapeHtml(warning)}</span>`).join("")}</div>` : ""}${selected.tasks.map((task) => {
+    const status = task.requiresUserApproval ? "Approval required" : task.automated ? "Automation ready" : "Manual action";
+    const source = task.source ? sourceLabel(task.source) : "Unknown source";
+    return `
     <article class="task-card">
-      <div class="task-card-head"><div><h3>${escapeHtml(task.title)}</h3><span class="task-kind">${escapeHtml(task.kind ?? "other")}</span></div><span class="risk ${escapeAttr(task.risk ?? "medium")}">${escapeHtml(task.risk ?? "unknown")} risk</span></div>
+      <div class="task-card-head"><div><h3>${escapeHtml(task.title)}</h3><span class="task-kind">${escapeHtml(task.kind ?? "other")} · ${escapeHtml(status)}</span></div><span class="risk ${escapeAttr(task.risk ?? "medium")}">${escapeHtml(task.risk ?? "unknown")} risk</span></div>
       <p>${escapeHtml(task.description ?? "No task description supplied.")}</p>
       <div class="task-flags">
         ${task.requiresWallet ? `<span>Wallet</span>` : ""}${task.requiresGas ? `<span>Gas</span>` : ""}${task.requiresUserApproval ? `<span class="approval-flag">User approval</span>` : `<span class="ready-flag">Ready</span>`}
       </div>
-      ${task.source ? `<small class="source">Source: ${escapeHtml(task.source)}</small>` : ""}
-    </article>`).join("") || `<div class="empty"><span>No tasks extracted.</span></div>`;
+      ${task.rewardHint ? `<small class="source">Reward: ${escapeHtml(task.rewardHint)}</small>` : ""}
+      ${task.source ? `<small class="source">Source: ${escapeHtml(source)}</small>` : ""}
+      ${task.deadline ? `<small class="source">Deadline: ${escapeHtml(task.deadline)}</small>` : ""}
+    </article>`;
+  }).join("") || `<div class="empty"><span>No tasks extracted.</span></div>`;
   const dialog = $("#task-dialog");
   if (typeof dialog.showModal === "function") dialog.showModal();
 }
