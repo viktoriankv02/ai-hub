@@ -102,7 +102,7 @@ function toOpportunity(item: GitHubRepositoryItem): ProjectOpportunity | undefin
   const language = stringValue(item.language) ?? "";
   const text = `${fullName} ${repoName} ${description} ${topics.join(" ")} ${language}`.toLowerCase();
   if (NOISE_TERMS.some((term) => term.test(text)) && !PROJECT_TERMS.some((term) => term.test(text))) return undefined;
-  const stage = inferStage(text); const actions = inferActions(text); const signals = inferSignals(text, stage, actions);
+  const stage = inferStage(text); const actions = inferActions(text); const signals = inferSignals(text, stage, actions, stringValue(item.updated_at));
   const stars = numberValue(item.stargazers_count); const forks = numberValue(item.forks_count);
   const credibility = Math.min(15, Math.round(Math.log10(1 + stars) * 4 + Math.log10(1 + forks) * 2));
   const priority = Math.min(100, 15 + credibility + (stage === "incentivized" ? 20 : stage === "testnet" ? 15 : stage === "builder-program" ? 12 : 0) + actions.length * 5 + (EVM_TERMS.some((term) => text.includes(term)) ? 8 : 0));
@@ -118,9 +118,22 @@ function inferStage(text: string): OpportunityStage {
   return "research";
 }
 function inferActions(text: string): string[] { return [...new Set(ACTION_TERMS.filter(([term]) => text.includes(term)).map(([, action]) => action))]; }
-function inferSignals(text: string, stage: OpportunityStage, actions: string[]): ProjectOpportunity["signals"] {
+function inferSignals(text: string, stage: OpportunityStage, actions: string[], updatedAt?: string): ProjectOpportunity["signals"] {
   const explicitReward = /(airdrop|points|rewards|reward)/.test(text); const incentiveProgram = /(incentivized|incentive)/.test(text);
-  return { testnetActivity: stage === "testnet" ? 80 : undefined, mainnetReadiness: stage === "mainnet" ? 70 : undefined, developerProgram: stage === "builder-program" ? 80 : undefined, rewardSignals: explicitReward ? 75 : incentiveProgram ? 60 : undefined, onchainVerifiability: actions.some((a) => ["bridge", "swap", "liquidity", "stake", "deploy", "mint"].includes(a)) ? 70 : undefined, ecosystemActivity: /(community|discord|telegram|campaign|hackathon|ecosystem)/.test(text) ? 65 : undefined, timing: stage === "testnet" || stage === "builder-program" ? 50 : undefined };
+  return { testnetActivity: stage === "testnet" ? 80 : undefined, mainnetReadiness: stage === "mainnet" ? 70 : undefined, developerProgram: stage === "builder-program" ? 80 : undefined, rewardSignals: explicitReward ? 75 : incentiveProgram ? 60 : undefined, onchainVerifiability: actions.some((a) => ["bridge", "swap", "liquidity", "stake", "deploy", "mint"].includes(a)) ? 70 : undefined, ecosystemActivity: /(community|discord|telegram|campaign|hackathon|ecosystem)/.test(text) ? 65 : undefined, timing: inferTimingSignal(updatedAt) };
+}
+function inferTimingSignal(updatedAt?: string): number | undefined {
+  if (!updatedAt) return undefined;
+  const timestamp = Date.parse(updatedAt);
+  if (!Number.isFinite(timestamp)) return undefined;
+  const ageMs = Date.now() - timestamp;
+  if (ageMs < 0) return 100;
+  const ageDays = ageMs / 86_400_000;
+  if (ageDays <= 1) return 100;
+  if (ageDays <= 7) return 75;
+  if (ageDays <= 30) return 50;
+  if (ageDays <= 90) return 25;
+  return undefined;
 }
 function stringValue(value: unknown): string | undefined { return typeof value === "string" && value.trim() ? value.trim() : undefined; }
 function numberValue(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined; }
