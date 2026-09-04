@@ -10,17 +10,17 @@ describe("GitHubRepositoryOpportunitySource", () => {
         status: 200,
         async json() {
           return {
-            items: [
-              {
-                full_name: "example/project",
-                name: "project",
-                html_url: "https://github.com/example/project",
-                description: "Incentivized testnet with bridge, swap and quest campaign",
-                topics: ["web3", "testnet"],
-                language: "Solidity",
-                updated_at: "2026-09-01T12:00:00Z",
-              },
-            ],
+            items: [{
+              full_name: "example/project",
+              name: "project",
+              html_url: "https://github.com/example/project",
+              description: "Incentivized testnet with bridge, swap and quest campaign",
+              topics: ["web3", "testnet"],
+              language: "Solidity",
+              updated_at: new Date().toISOString(),
+              stargazers_count: 100,
+              forks_count: 20,
+            }],
           };
         },
       }),
@@ -34,7 +34,59 @@ describe("GitHubRepositoryOpportunitySource", () => {
     expect(opportunity.stage).to.equal("incentivized");
     expect(opportunity.actions).to.include.members(["bridge", "swap", "quest"]);
     expect(opportunity.sources).to.include("https://github.com/example/project");
-    expect(opportunity.notes).to.include("no reward or eligibility claim inferred");
+    expect(opportunity.signals.rewardSignals).to.equal(60);
+    expect(opportunity.signals.timing).to.equal(100);
+    expect(opportunity.notes).to.include("keyword-derived evidence");
+    expect(opportunity.notes).to.include("Stars: 100");
+    expect(opportunity.notes).to.include("Forks: 20");
+  });
+
+  it("uses strong reward evidence only for explicit reward keywords", async () => {
+    const source = new GitHubRepositoryOpportunitySource({
+      queries: ["testnet"],
+      fetcher: async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            items: [{
+              full_name: "example/rewards",
+              name: "rewards",
+              html_url: "https://github.com/example/rewards",
+              description: "testnet airdrop points and rewards campaign",
+              updated_at: "2026-09-04T00:00:00Z",
+            }],
+          };
+        },
+      }),
+    });
+
+    const [opportunity] = await source.discover();
+    expect(opportunity.signals.rewardSignals).to.equal(75);
+  });
+
+  it("derives timing from repository freshness", async () => {
+    const source = new GitHubRepositoryOpportunitySource({
+      queries: ["testnet"],
+      fetcher: async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            items: [{
+              full_name: "example/stale",
+              name: "stale",
+              html_url: "https://github.com/example/stale",
+              description: "testnet bridge",
+              updated_at: "2026-01-01T00:00:00Z",
+            }],
+          };
+        },
+      }),
+    });
+
+    const [opportunity] = await source.discover();
+    expect(opportunity.signals.timing).to.equal(undefined);
   });
 
   it("deduplicates repositories returned by multiple queries", async () => {
