@@ -48,6 +48,7 @@ describe("runApprovedActions idempotency", () => {
     expect(run.event.txHash).to.equal("0xtx1");
     expect(receipt?.status).to.equal("submitted");
     expect(receipt?.txHash).to.equal("0xtx1");
+    expect(receipt?.txHashes).to.deep.equal(["0xtx1"]);
   });
 
   it("does not invoke the handler again for an already submitted intent", async () => {
@@ -71,6 +72,28 @@ describe("runApprovedActions idempotency", () => {
     expect(run.event.status).to.equal("skipped");
     expect(run.event.note).to.match(/already reserved \(already-submitted/);
     expect(store.list()[0]?.txHash).to.equal("0xtx1");
+  });
+
+  it("preserves all submitted hashes for a multi-call execution", async () => {
+    const store = new ExecutionReceiptStore();
+    const options = { ...baseOptions, idempotency: { ...baseOptions.idempotency, store } };
+
+    const [run] = await runApprovedActions(
+      [{ action, decision: approved }],
+      {
+        [action.id]: () => ({
+          status: "success",
+          txHash: "0xtx2",
+          txHashes: ["0xtx1", "0xtx2"],
+          note: "batch submitted",
+        }),
+      },
+      options,
+    );
+
+    expect(run.event.txHash).to.equal("0xtx2");
+    expect(store.list()[0]?.status).to.equal("submitted");
+    expect(store.list()[0]?.txHashes).to.deep.equal(["0xtx1", "0xtx2"]);
   });
 
   it("allows a retry after a failed handler reservation", async () => {
