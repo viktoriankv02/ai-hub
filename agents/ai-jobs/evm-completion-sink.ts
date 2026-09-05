@@ -5,7 +5,8 @@ import {
   isHexString,
 } from "ethers";
 import type { Signer } from "ethers";
-import type { CompletionAttestation, CompletionAttestationSink } from "./completion-bridge.js";
+import type { CompletionAttestation } from "./completion-attestation.js";
+import type { CompletionAttestationSink } from "./completion-bridge.js";
 import {
   assertValidCompletionAttestation,
   completionIdFromPayload,
@@ -38,13 +39,6 @@ function bytes32(value: string, label: string): string {
   throw new Error(`${label} must be a 32-byte hex value`);
 }
 
-/**
- * Real EVM sink for the completion-attestation bridge.
- *
- * The sink verifies the attestation locally before submitting it. The reporter
- * verifies the same signature again on-chain, so a compromised relayer cannot
- * forge a completion without a configured attester key.
- */
 export class EVMCompletionSink implements CompletionAttestationSink {
   private readonly contract: Contract;
   private readonly options: EVMCompletionSinkOptions;
@@ -73,8 +67,6 @@ export class EVMCompletionSink implements CompletionAttestationSink {
     const metadataHash = this.options.metadataHash
       ? bytes32(this.options.metadataHash, "metadataHash")
       : resultHash;
-
-    // Must exactly match AICompletionReporter.expectedCompletionId().
     const completionId = completionIdFromPayload(attestation, attestation.signer);
 
     const transaction = (await this.contract.submitVerifiedCompletion(
