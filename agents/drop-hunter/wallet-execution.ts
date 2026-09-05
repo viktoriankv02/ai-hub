@@ -1,7 +1,12 @@
 import type { PlannedAction } from "./action-planner.js";
 import type { ExecutionGate, ExecutionGateDecision } from "./execution-gate.js";
 import type { ExecutionHandlerResult } from "./execution-runner.js";
-import type { TransactionCall, TransactionPreview, TransactionPreviewBuilder } from "./transaction-preview.js";
+import {
+  fingerprintTransactionPreview,
+  type TransactionCall,
+  type TransactionPreview,
+  type TransactionPreviewBuilder,
+} from "./transaction-preview.js";
 
 export interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -38,6 +43,10 @@ function validateCallChain(call: TransactionCall, expectedChainId: number | unde
   return undefined;
 }
 
+function verifyPreviewIntegrity(preview: TransactionPreview): boolean {
+  return fingerprintTransactionPreview(preview) === preview.previewHash;
+}
+
 export class WalletExecutionAdapter {
   constructor(
     private readonly gate: ExecutionGate,
@@ -57,6 +66,9 @@ export class WalletExecutionAdapter {
     }
     if (!request.approvedPreviewHash || request.preview.previewHash !== request.approvedPreviewHash) {
       return { status: "failed", chainId: request.chainId, note: "approved transaction preview does not match the execution request" };
+    }
+    if (!verifyPreviewIntegrity(request.preview)) {
+      return { status: "failed", chainId: request.chainId, note: "transaction preview fingerprint is invalid or the preview was modified after approval" };
     }
     if (request.preview.calls.length === 0) {
       return {
