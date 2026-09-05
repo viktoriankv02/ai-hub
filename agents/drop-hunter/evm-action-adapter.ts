@@ -2,7 +2,7 @@ import type { PlannedAction } from "./action-planner.js";
 import type { ExecutionAdapter, ExecutionAdapterContext } from "./execution-adapter.js";
 import type { ExecutionHandlerResult } from "./execution-runner.js";
 import type { TransactionCall, TransactionPreview, TransactionPreviewBuilder } from "./transaction-preview.js";
-import { createTransactionPreviewHash, StaticTransactionPreviewBuilder } from "./transaction-preview.js";
+import { fingerprintTransactionPreview, StaticTransactionPreviewBuilder } from "./transaction-preview.js";
 
 export type EvmActionKind = "bridge" | "swap" | "stake" | "mint" | "deploy" | "custom";
 
@@ -118,20 +118,17 @@ export class EvmActionAdapter implements ExecutionAdapter {
     warnings.push(`Target chain is fixed to ${spec.chainId}.`);
     warnings.push(`Target contract is fixed to ${spec.to}.`);
 
-    const previewPayload = JSON.stringify({
+    const preview = {
       ...base,
-      calls: [call],
+      kind: spec.kind,
       gasLimit: spec.gasLimit,
-      kind: spec.kind,
-    });
-
-    return {
-      ...base,
-      kind: spec.kind,
       calls: [call],
       warnings,
-      previewHash: createTransactionPreviewHash(previewPayload),
-      gasLimit: spec.gasLimit,
+    };
+
+    return {
+      ...preview,
+      previewHash: fingerprintTransactionPreview(preview),
     };
   }
 
