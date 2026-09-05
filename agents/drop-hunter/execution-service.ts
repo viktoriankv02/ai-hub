@@ -1,12 +1,16 @@
 import type { PlannedAction } from "./action-planner.js";
 import type { ExecutionAdapterContext, ExecutionAdapterRegistry } from "./execution-adapter.js";
 import { ExecutionGate, type ExecutionGateDecision } from "./execution-gate.js";
-import { ExecutionReceiptStore } from "./execution-idempotency.js";
+import {
+  ExecutionReceiptStore,
+  JsonExecutionReceiptPersistence,
+} from "./execution-idempotency.js";
 import { runApprovedActions, type ExecutionRun } from "./execution-runner.js";
 
 export interface DropHunterExecutionServiceOptions {
   gate?: ExecutionGate;
   receipts?: ExecutionReceiptStore;
+  receiptStoreFile?: string;
 }
 
 export interface ExecuteOpportunityActionRequest {
@@ -33,8 +37,18 @@ export class DropHunterExecutionService {
     private readonly adapters: ExecutionAdapterRegistry,
     options: DropHunterExecutionServiceOptions = {},
   ) {
+    if (options.receipts && options.receiptStoreFile) {
+      throw new Error("provide either receipts or receiptStoreFile, not both");
+    }
+
     this.gate = options.gate ?? new ExecutionGate();
-    this.receipts = options.receipts ?? new ExecutionReceiptStore();
+    this.receipts =
+      options.receipts ??
+      new ExecutionReceiptStore(
+        options.receiptStoreFile
+          ? new JsonExecutionReceiptPersistence(options.receiptStoreFile)
+          : undefined,
+      );
   }
 
   async executeOpportunityAction(
