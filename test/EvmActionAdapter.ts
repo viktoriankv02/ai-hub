@@ -37,7 +37,31 @@ describe("EvmActionAdapter", function () {
       chainId: 11155111,
     }]);
     expect(preview.gasLimit).to.equal("250000");
-    expect(preview.previewHash).to.match(/^preview:[0-9a-f]{8}$/);
+    expect(preview.previewHash).to.match(/^preview:[0-9a-f]{64}$/);
+  });
+
+  it("changes the preview fingerprint when trusted calldata changes", function () {
+    const first = new EvmActionAdapter({
+      specs: [{
+        actionId: action.id,
+        kind: "swap",
+        chainId: 11155111,
+        to: "0x1111111111111111111111111111111111111111",
+        data: "0x1234",
+      }],
+    }).buildPreview(action, { chainId: 11155111 });
+
+    const second = new EvmActionAdapter({
+      specs: [{
+        actionId: action.id,
+        kind: "swap",
+        chainId: 11155111,
+        to: "0x1111111111111111111111111111111111111111",
+        data: "0x1235",
+      }],
+    }).buildPreview(action, { chainId: 11155111 });
+
+    expect(first.previewHash).to.not.equal(second.previewHash);
   });
 
   it("rejects a wallet context on the wrong chain", function () {
