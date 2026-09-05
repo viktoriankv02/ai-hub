@@ -179,4 +179,84 @@ describe("DropHunterExecutionService", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("reconciles a submitted receipt without creating a new execution reservation", async () => {
+    const { service } = createService(() => ({ status: "success", txHash: "0xconfirm-me" }));
+    const run = await service.executeOpportunityAction({
+      opportunityId: "opportunity-reconcile",
+      action,
+      approval: approved,
+      context: {
+        mode: "execute",
+        timestamp: "2026-09-05T11:30:00Z",
+        chainId: 84532,
+        walletConnected: true,
+        walletAddress: "0x0000000000000000000000000000000000000001",
+        gasAvailable: true,
+      },
+      account: "0x0000000000000000000000000000000000000001",
+      payloadFingerprint: "preview:reconcile",
+    });
+
+    const key = service.receipts.list()[0]?.idempotencyKey;
+    expect(key).to.be.a("string");
+    expect(service.receipts.list()[0]?.status).to.equal("submitted");
+
+    let confirmations = 0;
+    const confirmed = await service.reconcileSubmittedReceipt(key as string, "2026-09-05T11:31:00Z", {
+      async confirm(txHash) {
+        confirmations += 1;
+        expect(txHash).to.equal("0xconfirm-me");
+        return {
+          status: "confirmed",
+          txHash,
+          note: "transaction confirmed on-chain",
+        };
+      },
+    });
+
+    expect(run.event.status).to.equal("success");
+    expect(confirmations).to.equal(1);
+    expect(confirmed.status).to.equal("confirmed");
+    expect(confirmed.txHash).to.equal("0xconfirm-me");
+  });
+
+  it("keeps an unknown reconciliation outcome non-retryable", async () => {
+    const { service } = createService(() => ({ status: "success", txHash: "0xunknown" }));
+    await service.executeOpportunityAction({
+      opportunityId: "opportunity-unknown",
+      action,
+      approval: approved,
+      context: {
+        mode: "execute",
+        timestamp: "2026-09-05T11:40:00Z",
+        chainId: 84532,
+        walletConnected: true,
+        walletAddress: "0x0000000000000000000000000000000000000001",
+        gasAvailable: true,
+      },
+      payloadFingerprint: "preview:unknown",
+    });
+
+    const receipt = service.receipts.list()[0];
+    const reconciled = await service.reconcileSubmittedReceipt(receipt!.idempotencyKey, "2026-09-05T11:41:00Z", {
+      async confirm() {
+        return { status: "unknown", note: "transaction receipt is not available yet" };
+      },
+    });
+
+    expect(reconciled.status).to.equal("unknown");
+    const retry = service.receipts.reserve(
+      {
+        opportunityId: "opportunity-unknown",
+        actionId: action.id,
+        chainId: 84532,
+        account: "0x0000000000000000000000000000000000000001",
+        payloadFingerprint: "preview:unknown",
+      },
+      "2026-09-05T11:42:00Z",
+    );
+    expect(retry.reserved).to.equal(false);
+    expect(retry.reason).to.equal("already-unknown");
+  });
 });
