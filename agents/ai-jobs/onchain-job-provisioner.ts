@@ -7,15 +7,18 @@ const ENGINE_ABI = [
   "event JobCreated(uint256 indexed jobId,address indexed creator,uint256 indexed agentId,uint256 reward,bytes32 taskHash)",
   "function createJob(uint256 agentId, bytes32 taskHash, uint256 reward) returns (uint256 jobId)",
   "function assignJob(uint256 jobId)",
-  "function jobs(uint256 jobId) view returns (uint256 id,address creator,uint256 agentId,bytes32 taskHash,uint256 reward,bool assigned,bool completed,uint256 createdAt,uint256 completedAt,bytes32 resultHash)",
 ];
 
 export interface OnchainJobProvisionerOptions {
   signer: Signer;
   engineAddress: string;
-  bindingStore: OnchainJobBindingStore;
+  bindingStore?: OnchainJobBindingStore;
+  bindings?: OnchainJobBindingStore;
   tokenDecimals?: number;
-  agentId: bigint | number | string;
+  agentId?: bigint | number | string;
+  resolveAgentId?: (agentId: string) => Promise<bigint | number | string>;
+  assignmentSigner?: Signer;
+  rewardTokenAddress?: string;
   autoAssign?: boolean;
 }
 
@@ -39,16 +42,26 @@ function assertJobId(value: bigint): bigint {
 
 export class OnchainJobProvisioner {
   private readonly engine: Contract;
-  private readonly options: OnchainJobProvisionerOptions;
+  private readonly assignmentEngine: Contract;
+  private readonly options: Required<Pick<OnchainJobProvisionerOptions, "signer" | "engineAddress" | "autoAssign" | "tokenDecimals">> & OnchainJobProvisionerOptions;
 
   constructor(options: OnchainJobProvisionerOptions) {
     if (!options.engineAddress) throw new Error("engineAddress is required");
+    const bindingStore = options.bindingStore ?? options.bindings;
+    if (!bindingStore) throw new Error("bindingStore is required");
+
     this.options = {
       tokenDecimals: 18,
       autoAssign: false,
       ...options,
+      bindingStore,
     };
     this.engine = new Contract(options.engineAddress, ENGINE_ABI, options.signer);
+    this.assignmentEngine = new Contract(
+      options.engineAddress,
+      ENGINE_ABI,
+      options.assignmentSigner ?? options.signer,
+    );
   }
 
   async provision(job: AIJobRecord): Promise<OnchainJobProvisioningResult> {
@@ -56,7 +69,7 @@ export class OnchainJobProvisioner {
     if (!job.taskHash.trim()) throw new Error("job.taskHash is required");
     if (!job.reward.trim()) throw new Error("job.reward is required");
 
-    const existing = this.options.bindingStore.get(job.id);
+    const existing = this.options.bindingStore!.get(job.id);
     if (existing !== undefined) {
       return {
         offchainJobId: job.id,
@@ -65,14 +78,13 @@ export class OnchainJobProvisioner {
       };
     }
 
-    const reward = parseUnits(job.reward, this.options.tokenDecimals ?? 18);
+    const reward = parseUnits(job.reward, this.options.tokenDecimals);
     if (reward <= 0n) throw new Error("job.reward must be positive");
 
-    const tx = await this.engine.createJob(
-      BigInt(this.options.agentId),
-      taskHashBytes32(job.taskHash),
-      reward,
-    );
+    const agentId = await this.resolveAgentId(job.agentId);
+    if (agentId < 1n) throw new Error("resolved agent id must be positive");
+
+    const tx = await this.engine.createJob(agentId, taskHashBytes32(job.taskHash), reward);
     const receipt = await tx.wait();
     if (!receipt) throw new Error("createJob transaction did not produce a receipt");
 
@@ -88,16 +100,13 @@ export class OnchainJobProvisioner {
         // Ignore logs emitted by other contracts.
       }
     }
+    if (onchainJobId === undefined) throw new Error("JobCreated event not found in createJob receipt");
 
-    if (onchainJobId === undefined) {
-      throw new Error("JobCreated event not found in createJob receipt");
-    }
-
-    this.options.bindingStore.set(job.id, onchainJobId);
+    this.options.bindingStore!.set(job.id, onchainJobId);
 
     let assignedTransactionId: string | undefined;
     if (this.options.autoAssign) {
-      const assignTx = await this.engine.assignJob(onchainJobId);
+      const assignTx = await this.assignmentEngine.assignJob(onchainJobId);
       await assignTx.wait();
       assignedTransactionId = assignTx.hash;
     }
@@ -109,6 +118,20 @@ export class OnchainJobProvisioner {
       assignedTransactionId,
       reused: false,
     };
+  }
+
+  async resolveOnchainJobId(offchainJobId: string): Promise<bigint> {
+    const value = this.options.bindingStore!.get(offchainJobId);
+    if (value === undefined) throw new Error(`no on-chain binding exists for off-chain job '${offchainJobId}'`);
+    return assertJobId(value);
+  }
+
+  private async resolveAgentId(agentId: string): Promise<bigint> {
+    if (this.options.resolveAgentId) {
+      return BigInt(await this.options.resolveAgentId(agentId));
+    }
+    if (this.options.agentId !== undefined) return BigInt(this.options.agentId);
+    throw new Error(`cannot resolve off-chain agentId '${agentId}' to an on-chain agent id`);
   }
 }
 
