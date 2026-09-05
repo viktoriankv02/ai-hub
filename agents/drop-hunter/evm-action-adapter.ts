@@ -2,7 +2,7 @@ import type { PlannedAction } from "./action-planner.js";
 import type { ExecutionAdapter, ExecutionAdapterContext } from "./execution-adapter.js";
 import type { ExecutionHandlerResult } from "./execution-runner.js";
 import type { TransactionCall, TransactionPreview, TransactionPreviewBuilder } from "./transaction-preview.js";
-import { StaticTransactionPreviewBuilder } from "./transaction-preview.js";
+import { createTransactionPreviewHash, StaticTransactionPreviewBuilder } from "./transaction-preview.js";
 
 export type EvmActionKind = "bridge" | "swap" | "stake" | "mint" | "deploy" | "custom";
 
@@ -125,20 +125,12 @@ export class EvmActionAdapter implements ExecutionAdapter {
       kind: spec.kind,
     });
 
-    // Reuse the base preview hash only as an input-independent marker is not
-    // sufficient once exact calldata is added. Build a deterministic hash here.
-    let hash = 2166136261;
-    for (let i = 0; i < previewPayload.length; i += 1) {
-      hash ^= previewPayload.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-
     return {
       ...base,
       kind: spec.kind,
       calls: [call],
       warnings,
-      previewHash: `preview:${(hash >>> 0).toString(16).padStart(8, "0")}`,
+      previewHash: createTransactionPreviewHash(previewPayload),
       gasLimit: spec.gasLimit,
     };
   }
