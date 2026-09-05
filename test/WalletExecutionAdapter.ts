@@ -73,7 +73,7 @@ describe("WalletExecutionAdapter", () => {
     });
 
     expect(result.status).to.equal("failed");
-    expect(result.note).to.contain("does not match");
+    expect(result.note).to.contain("fingerprint is invalid");
   });
 
   it("blocks when the requested wallet is not the connected account", async () => {
@@ -155,7 +155,7 @@ describe("WalletExecutionAdapter", () => {
     });
 
     expect(result.status).to.equal("failed");
-    expect(result.note).to.contain("does not match");
+    expect(result.note).to.contain("fingerprint is invalid");
     expect(requests).to.deep.equal([]);
   });
 
