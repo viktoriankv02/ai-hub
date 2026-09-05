@@ -1,4 +1,7 @@
 import { expect } from "chai";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ActionExecutionAdapter, ExecutionAdapterRegistry } from "../agents/drop-hunter/execution-adapter.js";
 import { ExecutionGate } from "../agents/drop-hunter/execution-gate.js";
 import { ExecutionReceiptStore } from "../agents/drop-hunter/execution-idempotency.js";
@@ -21,13 +24,13 @@ const approved = {
   reason: "execution satisfies the configured policy",
 };
 
-function createService(handler: (action: PlannedAction) => { status: "success" | "failed"; txHash?: string }) {
+function createService(handler: (action: PlannedAction) => { status: "success" | "failed"; txHash?: string }, receiptStoreFile?: string) {
   const registry = new ExecutionAdapterRegistry();
   registry.register(new ActionExecutionAdapter("register-chain-adapter", [action.id], handler));
   return {
     service: new DropHunterExecutionService(registry, {
       gate: new ExecutionGate(),
-      receipts: new ExecutionReceiptStore(),
+      ...(receiptStoreFile ? { receiptStoreFile } : { receipts: new ExecutionReceiptStore() }),
     }),
     registry,
   };
@@ -125,5 +128,55 @@ describe("DropHunterExecutionService", () => {
     });
 
     expect(service.receipts.list()).to.have.length(2);
+  });
+
+  it("restores submitted receipts when the execution service is recreated", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "ai-hub-service-receipts-"));
+    const filePath = join(directory, "receipts.json");
+    try {
+      let firstInvocations = 0;
+      const first = createService(() => {
+        firstInvocations += 1;
+        return { status: "success", txHash: "0xpersisted" };
+      }, filePath).service;
+
+      const request = {
+        opportunityId: "opportunity-service-restart",
+        action,
+        approval: approved,
+        context: {
+          mode: "execute" as const,
+          timestamp: "2026-09-05T11:20:00Z",
+          chainId: 84532,
+          walletConnected: true,
+          walletAddress: "0x0000000000000000000000000000000000000001",
+          gasAvailable: true,
+        },
+        account: "0x0000000000000000000000000000000000000001",
+        payloadFingerprint: "preview:restart-safe",
+      };
+
+      const firstRun = await first.executeOpportunityAction(request);
+      expect(firstInvocations).to.equal(1);
+      expect(firstRun.event.status).to.equal("success");
+
+      let restartedInvocations = 0;
+      const restarted = createService(() => {
+        restartedInvocations += 1;
+        return { status: "success", txHash: "0xshould-not-send" };
+      }, filePath).service;
+
+      const secondRun = await restarted.executeOpportunityAction({
+        ...request,
+        context: { ...request.context, timestamp: "2026-09-05T11:21:00Z" },
+      });
+
+      expect(restartedInvocations).to.equal(0);
+      expect(secondRun.event.status).to.equal("skipped");
+      expect(secondRun.event.note).to.match(/^execution already reserved \(already-submitted;/);
+      expect(restarted.receipts.list()[0]?.txHash).to.equal("0xpersisted");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
