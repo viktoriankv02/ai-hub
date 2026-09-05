@@ -47,10 +47,30 @@ describe("ExecutionReceiptStore persistence", () => {
 
     expect(restored?.status).to.equal("submitted");
     expect(restored?.txHash).to.equal("0xtx-persisted");
+    expect(restored?.txHashes).to.deep.equal(["0xtx-persisted"]);
 
     const repeat = restarted.reserve(intent, "2026-09-05T10:01:00.000Z");
     expect(repeat.reserved).to.equal(false);
     expect(repeat.reason).to.equal("already-submitted");
+  });
+
+  it("restores all submitted hashes for a batch", () => {
+    const first = new ExecutionReceiptStore(new JsonExecutionReceiptPersistence(filePath));
+    const reserved = first.reserve(intent, "2026-09-05T10:00:00.000Z");
+    first.markSubmitted(
+      reserved.receipt.idempotencyKey,
+      "2026-09-05T10:00:01.000Z",
+      "0xtx2",
+      "batch submitted",
+      ["0xtx1", "0xtx2"],
+    );
+
+    const restarted = new ExecutionReceiptStore(new JsonExecutionReceiptPersistence(filePath));
+    const restored = restarted.find(intent);
+
+    expect(restored?.status).to.equal("submitted");
+    expect(restored?.txHash).to.equal("0xtx2");
+    expect(restored?.txHashes).to.deep.equal(["0xtx1", "0xtx2"]);
   });
 
   it("persists a failed receipt as retryable state", () => {
