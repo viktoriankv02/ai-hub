@@ -266,6 +266,52 @@ describe("DropHunterExecutionService", () => {
     expect(confirmedHashes).to.deep.equal(["0xtx1", "0xtx2"]);
   });
 
+  it("treats mixed batch outcomes as unknown instead of retryable failure", async () => {
+    const { service } = createService(() => ({
+      status: "success",
+      txHashes: ["0xtx-confirmed", "0xtx-failed"],
+      txHash: "0xtx-failed",
+    }));
+
+    await service.executeOpportunityAction({
+      opportunityId: "opportunity-batch-mixed",
+      action,
+      approval: approved,
+      context: {
+        mode: "execute",
+        timestamp: "2026-09-05T11:37:00Z",
+        chainId: 84532,
+        walletConnected: true,
+        gasAvailable: true,
+      },
+      account: "0x0000000000000000000000000000000000000001",
+      payloadFingerprint: "preview:batch-mixed",
+    });
+
+    const receipt = service.receipts.list()[0]!;
+    const reconciled = await service.reconcileSubmittedReceipt(receipt.idempotencyKey, "2026-09-05T11:38:00Z", {
+      async confirm(txHash) {
+        return txHash === "0xtx-confirmed"
+          ? { status: "confirmed", txHash, note: "confirmed" }
+          : { status: "failed", txHash, note: "reverted" };
+      },
+    });
+
+    expect(reconciled.status).to.equal("unknown");
+    const retry = service.receipts.reserve(
+      {
+        opportunityId: "opportunity-batch-mixed",
+        actionId: action.id,
+        chainId: 84532,
+        account: "0x0000000000000000000000000000000000000001",
+        payloadFingerprint: "preview:batch-mixed",
+      },
+      "2026-09-05T11:39:00Z",
+    );
+    expect(retry.reserved).to.equal(false);
+    expect(retry.reason).to.equal("already-unknown");
+  });
+
   it("keeps an unknown reconciliation outcome non-retryable", async () => {
     const { service } = createService(() => ({ status: "success", txHash: "0xunknown" }));
     await service.executeOpportunityAction({
