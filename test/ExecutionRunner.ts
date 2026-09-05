@@ -46,6 +46,31 @@ describe("runApprovedActions", () => {
     expect(run.event.note).to.equal("wallet connection is required");
   });
 
+  it("revalidates gas availability even when execution mode is omitted", async () => {
+    let invoked = false;
+
+    const [run] = await runApprovedActions(
+      [{ action, decision: approved }],
+      {
+        [action.id]: () => {
+          invoked = true;
+          return { status: "success" };
+        },
+      },
+      {
+        timestamp: "2026-09-04T12:00:00Z",
+        gate: new ExecutionGate(),
+        walletConnected: true,
+        gasAvailable: false,
+      },
+    );
+
+    expect(invoked).to.equal(false);
+    expect(run.decision.allowed).to.equal(false);
+    expect(run.event.status).to.equal("skipped");
+    expect(run.event.note).to.equal("gas availability is required");
+  });
+
   it("executes when the stored approval still satisfies the current context", async () => {
     let invoked = false;
 
