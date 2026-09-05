@@ -103,11 +103,11 @@ function toOpportunity(item: GitHubRepositoryItem): ProjectOpportunity | undefin
   const text = `${fullName} ${repoName} ${description} ${topics.join(" ")} ${language}`.toLowerCase();
   if (NOISE_TERMS.some((term) => term.test(text)) && !PROJECT_TERMS.some((term) => term.test(text))) return undefined;
   const stage = inferStage(text); const actions = inferActions(text); const signals = inferSignals(text, stage, actions, stringValue(item.updated_at));
-  const stars = numberValue(item.stargazers_count); const forks = numberValue(item.forks_count);
+  const stars = numberValue(item.stargazers_count) ?? 0; const forks = numberValue(item.forks_count) ?? 0;
   const credibility = Math.min(15, Math.round(Math.log10(1 + stars) * 4 + Math.log10(1 + forks) * 2));
   const priority = Math.min(100, 15 + credibility + (stage === "incentivized" ? 20 : stage === "testnet" ? 15 : stage === "builder-program" ? 12 : 0) + actions.length * 5 + (EVM_TERMS.some((term) => text.includes(term)) ? 8 : 0));
   const vm = EVM_TERMS.some((term) => text.includes(term)) ? "EVM" : "CUSTOM";
-  return { id: `github:${fullName}`, name: repoName, vm, stage, priority, signals, sources: [url, `https://api.github.com/repos/${fullName}`], actions: actions.length > 0 ? actions : ["verify"], notes: `Public GitHub metadata only. Reward signals are keyword-derived evidence, not claims of eligibility or payout.${stars !== undefined ? ` Stars: ${stars}.` : ""}${forks !== undefined ? ` Forks: ${forks}.` : ""}` };
+  return { id: `github:${fullName}`, name: repoName, vm, stage, priority, signals, sources: [url, `https://api.github.com/repos/${fullName}`], actions: actions.length > 0 ? actions : ["verify"], notes: `Public GitHub metadata only. Reward signals are keyword-derived evidence, not claims of eligibility or payout.${numberValue(item.stargazers_count) !== undefined ? ` Stars: ${stars}.` : ""}${numberValue(item.forks_count) !== undefined ? ` Forks: ${forks}.` : ""}` };
 }
 
 function inferStage(text: string): OpportunityStage {
