@@ -24,7 +24,14 @@ const approved = {
   reason: "execution satisfies the configured policy",
 };
 
-function createService(handler: (action: PlannedAction) => { status: "success" | "failed"; txHash?: string }, receiptStoreFile?: string) {
+type HandlerResult = {
+  status: "success" | "failed";
+  txHash?: string;
+  txHashes?: string[];
+  note?: string;
+};
+
+function createService(handler: (action: PlannedAction) => HandlerResult, receiptStoreFile?: string) {
   const registry = new ExecutionAdapterRegistry();
   registry.register(new ActionExecutionAdapter("register-chain-adapter", [action.id], handler));
   return {
@@ -219,6 +226,44 @@ describe("DropHunterExecutionService", () => {
     expect(confirmations).to.equal(1);
     expect(confirmed.status).to.equal("confirmed");
     expect(confirmed.txHash).to.equal("0xconfirm-me");
+  });
+
+  it("reconciles every submitted hash in a multi-call receipt", async () => {
+    const { service } = createService(() => ({
+      status: "success",
+      txHash: "0xtx2",
+      txHashes: ["0xtx1", "0xtx2"],
+    }));
+
+    await service.executeOpportunityAction({
+      opportunityId: "opportunity-batch-reconcile",
+      action,
+      approval: approved,
+      context: {
+        mode: "execute",
+        timestamp: "2026-09-05T11:35:00Z",
+        chainId: 84532,
+        walletConnected: true,
+        gasAvailable: true,
+      },
+      account: "0x0000000000000000000000000000000000000001",
+      payloadFingerprint: "preview:batch-reconcile",
+    });
+
+    const receipt = service.receipts.list()[0]!;
+    expect(receipt.txHashes).to.deep.equal(["0xtx1", "0xtx2"]);
+
+    const confirmedHashes: string[] = [];
+    const confirmed = await service.reconcileSubmittedReceipt(receipt.idempotencyKey, "2026-09-05T11:36:00Z", {
+      async confirm(txHash) {
+        confirmedHashes.push(txHash);
+        return { status: "confirmed", txHash, note: "confirmed" };
+      },
+    });
+
+    expect(confirmed.status).to.equal("confirmed");
+    expect(confirmed.txHashes).to.deep.equal(["0xtx1", "0xtx2"]);
+    expect(confirmedHashes).to.deep.equal(["0xtx1", "0xtx2"]);
   });
 
   it("keeps an unknown reconciliation outcome non-retryable", async () => {
