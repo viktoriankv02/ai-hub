@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -68,11 +68,18 @@ describe("ExecutionReceiptStore persistence", () => {
 
   it("rejects malformed persisted JSON instead of silently resetting state", () => {
     const persistence = new JsonExecutionReceiptPersistence(filePath);
-    const fs = require("node:fs") as typeof import("node:fs");
-    fs.mkdirSync(directory, { recursive: true });
-    fs.writeFileSync(filePath, "{not-json", "utf8");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(filePath, "{not-json", "utf8");
 
     expect(() => new ExecutionReceiptStore(persistence)).to.throw(/failed to parse execution receipt store/);
+  });
+
+  it("rejects a valid JSON document with an unsupported schema version", () => {
+    const persistence = new JsonExecutionReceiptPersistence(filePath);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(filePath, JSON.stringify({ version: 99, receipts: [] }), "utf8");
+
+    expect(() => new ExecutionReceiptStore(persistence)).to.throw(/expected version 1 document/);
   });
 
   it("writes a versioned document and leaves no temporary file behind", () => {
