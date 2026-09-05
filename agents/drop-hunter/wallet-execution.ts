@@ -120,14 +120,30 @@ export class WalletExecutionAdapter {
 
       const txHashes: string[] = [];
       for (const call of request.preview.calls) {
-        const txHash = await sendTransaction(request.provider, request.walletAddress, call);
-        if (typeof txHash !== "string" || !txHash) throw new Error("wallet provider returned an invalid transaction hash");
-        txHashes.push(txHash);
+        try {
+          const txHash = await sendTransaction(request.provider, request.walletAddress, call);
+          if (typeof txHash !== "string" || !txHash) throw new Error("wallet provider returned an invalid transaction hash");
+          txHashes.push(txHash);
+        } catch (error) {
+          const note = error instanceof Error ? error.message : String(error);
+          if (txHashes.length > 0) {
+            return {
+              status: "failed",
+              chainId: expectedChainId,
+              txHash: txHashes[txHashes.length - 1],
+              txHashes,
+              note: `batch execution partially submitted; reconciliation is required before retry: ${note}`,
+            };
+          }
+          throw error;
+        }
       }
+
       return {
         status: "success",
         chainId: expectedChainId,
         txHash: txHashes[txHashes.length - 1],
+        txHashes,
         note: `executed ${txHashes.length} approved transaction call(s)`,
       };
     } catch (error) {
