@@ -23,6 +23,7 @@ export interface ExecutionReceipt {
   chainId?: number;
   account?: string;
   txHash?: string;
+  txHashes?: string[];
   note?: string;
 }
 
@@ -59,7 +60,10 @@ export function createIdempotencyKey(i: ExecutionIntent) {
     .digest("hex");
 }
 
-const clone = (r: ExecutionReceipt) => ({ ...r });
+const clone = (r: ExecutionReceipt): ExecutionReceipt => ({
+  ...r,
+  txHashes: r.txHashes ? [...r.txHashes] : undefined,
+});
 
 function reservationReason(s: ExecutionReceiptStatus): ReceiptReservation["reason"] {
   switch (s) {
@@ -89,8 +93,13 @@ function isReceipt(value: unknown): value is ExecutionReceipt {
     (receipt.chainId === undefined || typeof receipt.chainId === "number") &&
     (receipt.account === undefined || typeof receipt.account === "string") &&
     (receipt.txHash === undefined || typeof receipt.txHash === "string") &&
+    (receipt.txHashes === undefined || (Array.isArray(receipt.txHashes) && receipt.txHashes.every((hash) => typeof hash === "string" && hash.length > 0))) &&
     (receipt.note === undefined || typeof receipt.note === "string")
   );
+}
+
+function uniqueTxHashes(txHashes: string[]): string[] {
+  return [...new Set(txHashes.map((hash) => hash.trim()).filter(Boolean))];
 }
 
 export class JsonExecutionReceiptPersistence implements ExecutionReceiptPersistence {
@@ -197,12 +206,25 @@ export class ExecutionReceiptStore {
     return { reserved: true, receipt: clone(r), reason: e ? "retryable-failure" as const : "new" as const };
   }
 
-  markSubmitted(k: string, t: string, txHash: string, n?: string) {
-    return this.update(k, { status: "submitted", updatedAt: t, txHash, note: n });
+  markSubmitted(k: string, t: string, txHash: string, n?: string, txHashes: string[] = [txHash]) {
+    const normalizedHashes = uniqueTxHashes(txHashes.length > 0 ? txHashes : [txHash]);
+    return this.update(k, {
+      status: "submitted",
+      updatedAt: t,
+      txHash: normalizedHashes[normalizedHashes.length - 1] ?? txHash,
+      txHashes: normalizedHashes,
+      note: n,
+    });
   }
 
-  markConfirmed(k: string, t: string, txHash?: string, n?: string) {
-    return this.update(k, { status: "confirmed", updatedAt: t, txHash, note: n });
+  markConfirmed(k: string, t: string, txHash?: string, n?: string, txHashes?: string[]) {
+    return this.update(k, {
+      status: "confirmed",
+      updatedAt: t,
+      ...(txHash !== undefined ? { txHash } : {}),
+      ...(txHashes !== undefined ? { txHashes: uniqueTxHashes(txHashes) } : {}),
+      note: n,
+    });
   }
 
   markFailed(k: string, t: string, n?: string) {
@@ -226,8 +248,19 @@ export class ExecutionReceiptStore {
     return [...this.receipts.values()].map(clone);
   }
 
-  reconcile(k: string, s: "confirmed" | "failed" | "unknown", t: string, o: { txHash?: string; note?: string } = {}) {
-    return this.update(k, { status: s, updatedAt: t, txHash: o.txHash, note: o.note });
+  reconcile(
+    k: string,
+    s: "confirmed" | "failed" | "unknown",
+    t: string,
+    o: { txHash?: string; txHashes?: string[]; note?: string } = {},
+  ) {
+    return this.update(k, {
+      status: s,
+      updatedAt: t,
+      ...(o.txHash !== undefined ? { txHash: o.txHash } : {}),
+      ...(o.txHashes !== undefined ? { txHashes: uniqueTxHashes(o.txHashes) } : {}),
+      ...(o.note !== undefined ? { note: o.note } : {}),
+    });
   }
 
   protected replaceAll(rs: ExecutionReceipt[]) {
