@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { ExecutionStatus } from "./execution-memory.js";
 
@@ -139,20 +139,29 @@ export class JsonExecutionReceiptPersistence implements ExecutionReceiptPersiste
       version: 1,
       receipts: receipts.map(clone),
     };
+    const serialized = `${JSON.stringify(document, null, 2)}\n`;
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
 
-    writeFileSync(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+    writeFileSync(temporaryPath, serialized, "utf8");
+    try {
+      renameSync(temporaryPath, this.filePath);
+      return;
+    } catch (renameError) {
+      if (!existsSync(this.filePath)) {
+        throw renameError;
+      }
+    }
+
+    // Windows does not replace an existing destination with renameSync.
+    // Remove the old snapshot only after the complete temporary file exists.
+    rmSync(this.filePath, { force: true });
     try {
       renameSync(temporaryPath, this.filePath);
     } catch (error) {
       try {
-        writeFileSync(this.filePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
-      } finally {
-        try {
-          readFileSync(temporaryPath);
-        } catch {
-          return;
-        }
+        rmSync(temporaryPath, { force: true });
+      } catch {
+        // Preserve the original write failure below.
       }
       throw error;
     }
