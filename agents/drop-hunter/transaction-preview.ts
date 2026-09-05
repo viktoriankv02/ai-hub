@@ -26,12 +26,29 @@ export interface TransactionPreviewBuilder {
   build(action: PlannedAction, context: { chainId?: number }): TransactionPreview;
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== "previewHash" && value !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
 /**
- * Creates a cryptographically strong, deterministic fingerprint for a preview payload.
- * The hash is an identity marker for the exact preview contents; it is not a signature.
+ * Creates a cryptographically strong, deterministic fingerprint for preview data.
+ * previewHash itself is excluded so callers can recompute the fingerprint before signing.
  */
 export function createTransactionPreviewHash(value: string): string {
   return `preview:${createHash("sha256").update(value, "utf8").digest("hex")}`;
+}
+
+export function fingerprintTransactionPreview(preview: Omit<TransactionPreview, "previewHash"> | TransactionPreview): string {
+  return createTransactionPreviewHash(JSON.stringify(canonicalize(preview)));
 }
 
 export class StaticTransactionPreviewBuilder implements TransactionPreviewBuilder {
@@ -49,15 +66,7 @@ export class StaticTransactionPreviewBuilder implements TransactionPreviewBuilde
       warnings.push("This action does not require a wallet transaction.");
     }
 
-    const previewPayload = JSON.stringify({
-      actionId: action.id,
-      label: action.label,
-      risk: action.risk,
-      chainId: context.chainId,
-      calls,
-    });
-
-    return {
+    const preview = {
       actionId: action.id,
       label: action.label,
       risk: action.risk,
@@ -66,7 +75,11 @@ export class StaticTransactionPreviewBuilder implements TransactionPreviewBuilde
       chainId: context.chainId,
       calls,
       warnings,
-      previewHash: createTransactionPreviewHash(previewPayload),
+    };
+
+    return {
+      ...preview,
+      previewHash: fingerprintTransactionPreview(preview),
     };
   }
 }
