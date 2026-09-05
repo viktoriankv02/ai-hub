@@ -32,6 +32,19 @@ export interface ExecutionReceiptConfirmer {
   }>;
 }
 
+function receiptTxHashes(receipt: ExecutionReceipt): string[] {
+  const hashes = receipt.txHashes?.filter(Boolean) ?? [];
+  if (hashes.length > 0) return [...new Set(hashes)];
+  return receipt.txHash ? [receipt.txHash] : [];
+}
+
+function aggregateConfirmationStatus(statuses: ExecutionReceiptStatus[]): "confirmed" | "failed" | "unknown" {
+  if (statuses.length === 0) return "unknown";
+  if (statuses.every((status) => status === "confirmed")) return "confirmed";
+  if (statuses.every((status) => status === "failed")) return "failed";
+  return "unknown";
+}
+
 /**
  * Canonical Drop Hunter execution boundary.
  *
@@ -104,14 +117,30 @@ export class DropHunterExecutionService {
     if (receipt.status !== "submitted") {
       return receipt;
     }
-    if (!receipt.txHash) {
+
+    const hashes = receiptTxHashes(receipt);
+    if (hashes.length === 0) {
       throw new Error(`submitted execution receipt has no transaction hash: ${idempotencyKey}`);
     }
 
-    const result = await confirmer.confirm(receipt.txHash);
-    return this.receipts.reconcile(idempotencyKey, result.status, timestamp, {
-      txHash: result.txHash ?? receipt.txHash,
-      note: result.note,
+    const results = await Promise.all(hashes.map(async (txHash) => {
+      const result = await confirmer.confirm(txHash);
+      return {
+        txHash: result.txHash ?? txHash,
+        status: result.status,
+        note: result.note,
+      };
+    }));
+
+    const status = aggregateConfirmationStatus(results.map((result) => result.status));
+    const notes = results
+      .map((result) => `${result.txHash}: ${result.status}${result.note ? ` (${result.note})` : ""}`)
+      .join("; ");
+
+    return this.receipts.reconcile(idempotencyKey, status, timestamp, {
+      txHash: results[results.length - 1]?.txHash ?? receipt.txHash,
+      txHashes: results.map((result) => result.txHash),
+      note: notes,
     });
   }
 }
