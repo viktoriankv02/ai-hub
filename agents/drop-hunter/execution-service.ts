@@ -4,6 +4,8 @@ import { ExecutionGate, type ExecutionGateDecision } from "./execution-gate.js";
 import {
   ExecutionReceiptStore,
   JsonExecutionReceiptPersistence,
+  type ExecutionReceipt,
+  type ExecutionReceiptStatus,
 } from "./execution-idempotency.js";
 import { runApprovedActions, type ExecutionRun } from "./execution-runner.js";
 
@@ -20,6 +22,14 @@ export interface ExecuteOpportunityActionRequest {
   context: ExecutionAdapterContext;
   account?: string;
   payloadFingerprint?: string;
+}
+
+export interface ExecutionReceiptConfirmer {
+  confirm(txHash: string): Promise<{
+    status: Extract<ExecutionReceiptStatus, "confirmed" | "failed" | "unknown">;
+    txHash?: string;
+    note?: string;
+  }>;
 }
 
 /**
@@ -80,5 +90,28 @@ export class DropHunterExecutionService {
     }
 
     return run;
+  }
+
+  async reconcileSubmittedReceipt(
+    idempotencyKey: string,
+    timestamp: string,
+    confirmer: ExecutionReceiptConfirmer,
+  ): Promise<ExecutionReceipt> {
+    const receipt = this.receipts.get(idempotencyKey);
+    if (!receipt) {
+      throw new Error(`Unknown execution receipt: ${idempotencyKey}`);
+    }
+    if (receipt.status !== "submitted") {
+      return receipt;
+    }
+    if (!receipt.txHash) {
+      throw new Error(`submitted execution receipt has no transaction hash: ${idempotencyKey}`);
+    }
+
+    const result = await confirmer.confirm(receipt.txHash);
+    return this.receipts.reconcile(idempotencyKey, result.status, timestamp, {
+      txHash: result.txHash ?? receipt.txHash,
+      note: result.note,
+    });
   }
 }
