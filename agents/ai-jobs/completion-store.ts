@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { CompletionAttestation } from "./completion-attestation.js";
 
@@ -63,19 +63,14 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
       throw new Error(`invalid completion publication store JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("invalid completion publication store document");
-    }
-
+    if (!parsed || typeof parsed !== "object") throw new Error("invalid completion publication store document");
     const document = parsed as Partial<PersistedCompletionPublications>;
     if (document.version !== 1 || !Array.isArray(document.publications)) {
       throw new Error("unsupported completion publication store schema");
     }
 
     for (const publication of document.publications) {
-      if (!publication || typeof publication !== "object") {
-        throw new Error("invalid completion publication entry");
-      }
+      if (!publication || typeof publication !== "object") throw new Error("invalid completion publication entry");
       const value = publication as CompletionPublication;
       if (!value.jobId?.trim() || !value.transactionId?.trim() || !value.publishedAt?.trim()) {
         throw new Error("invalid completion publication entry");
@@ -92,22 +87,13 @@ export class JsonCompletionPublicationStore implements CompletionPublicationStor
       publications: [...this.publications.values()],
     };
     writeFileSync(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+
     try {
       renameSync(temporaryPath, this.filePath);
-    } catch (error) {
-      try {
-        if (existsSync(this.filePath)) {
-          // Windows does not replace an existing destination with renameSync.
-          // Remove it only after the complete temporary document is written.
-          const { unlinkSync } = require("node:fs") as typeof import("node:fs");
-          unlinkSync(this.filePath);
-          renameSync(temporaryPath, this.filePath);
-        } else {
-          throw error;
-        }
-      } catch (inner) {
-        throw new Error(`failed to persist completion publication store: ${inner instanceof Error ? inner.message : String(inner)}`);
-      }
+    } catch {
+      if (!existsSync(this.filePath)) throw new Error("failed to persist completion publication store");
+      unlinkSync(this.filePath);
+      renameSync(temporaryPath, this.filePath);
     }
   }
 }
