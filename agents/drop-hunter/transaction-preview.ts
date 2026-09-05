@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ExecutionRisk, PlannedAction } from "./action-planner.js";
 
 export interface TransactionCall {
@@ -25,13 +26,12 @@ export interface TransactionPreviewBuilder {
   build(action: PlannedAction, context: { chainId?: number }): TransactionPreview;
 }
 
-function hash(value: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return `preview:${(h >>> 0).toString(16).padStart(8, "0")}`;
+/**
+ * Creates a cryptographically strong, deterministic fingerprint for a preview payload.
+ * The hash is an identity marker for the exact preview contents; it is not a signature.
+ */
+export function createTransactionPreviewHash(value: string): string {
+  return `preview:${createHash("sha256").update(value, "utf8").digest("hex")}`;
 }
 
 export class StaticTransactionPreviewBuilder implements TransactionPreviewBuilder {
@@ -66,7 +66,7 @@ export class StaticTransactionPreviewBuilder implements TransactionPreviewBuilde
       chainId: context.chainId,
       calls,
       warnings,
-      previewHash: hash(previewPayload),
+      previewHash: createTransactionPreviewHash(previewPayload),
     };
   }
 }
