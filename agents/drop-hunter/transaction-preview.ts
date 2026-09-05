@@ -31,7 +31,7 @@ function canonicalize(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => key !== "previewHash" && value !== undefined)
+        .filter(([key, entry]) => key !== "previewHash" && entry !== undefined)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, entry]) => [key, canonicalize(entry)]),
     );
@@ -47,7 +47,9 @@ export function createTransactionPreviewHash(value: string): string {
   return `preview:${createHash("sha256").update(value, "utf8").digest("hex")}`;
 }
 
-export function fingerprintTransactionPreview(preview: Omit<TransactionPreview, "previewHash"> | TransactionPreview): string {
+export function fingerprintTransactionPreview(
+  preview: Omit<TransactionPreview, "previewHash"> | TransactionPreview,
+): string {
   return createTransactionPreviewHash(JSON.stringify(canonicalize(preview)));
 }
 
