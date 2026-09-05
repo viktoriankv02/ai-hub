@@ -10,6 +10,7 @@ export interface ExecutionRunnerOptions {
   chainId?: number;
   /** Re-evaluate the stored approval against the current execution context. */
   gate?: ExecutionGate;
+  /** Defaults to execute whenever a gate is provided. */
   mode?: ExecutionMode;
   walletConnected?: boolean;
   gasAvailable?: boolean;
@@ -20,7 +21,7 @@ function revalidateDecision(
   decision: ExecutionGateDecision,
   options: ExecutionRunnerOptions,
 ): ExecutionGateDecision {
-  if (!options.gate || !options.mode) return decision;
+  if (!options.gate) return decision;
 
   const request: ExecutionGateRequest = {
     actionId: action.id,
@@ -28,7 +29,7 @@ function revalidateDecision(
     automated: action.automated,
     requiresWallet: action.requiresWallet,
     requiresGas: action.requiresGas,
-    mode: options.mode,
+    mode: options.mode ?? "execute",
     approved: decision.allowed,
     walletConnected: options.walletConnected,
     gasAvailable: options.gasAvailable,
