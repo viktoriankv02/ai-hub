@@ -3,7 +3,14 @@ import { ExecutionGate, type ExecutionGateDecision, type ExecutionGateRequest, t
 import type { ExecutionEvent } from "./execution-memory.js";
 import { ExecutionReceiptStore, type ReceiptReservation } from "./execution-idempotency.js";
 
-export interface ExecutionHandlerResult { status: "success" | "failed"; timestamp?: string; chainId?: number; txHash?: string; note?: string; }
+export interface ExecutionHandlerResult {
+  status: "success" | "failed";
+  timestamp?: string;
+  chainId?: number;
+  txHash?: string;
+  txHashes?: string[];
+  note?: string;
+}
 export type ExecutionHandler = (action: PlannedAction) => ExecutionHandlerResult | Promise<ExecutionHandlerResult>;
 export interface ExecutionRun { action: PlannedAction; decision: ExecutionGateDecision; event: ExecutionEvent; }
 export interface ExecutionIdempotencyOptions {
@@ -52,6 +59,11 @@ function reservationNote(reservation: ReceiptReservation): string {
   return `execution already reserved (${reservation.reason}; key ${key})`;
 }
 
+function normalizeSubmittedHashes(result: ExecutionHandlerResult): string[] {
+  const candidates = [...(result.txHashes ?? []), ...(result.txHash ? [result.txHash] : [])];
+  return [...new Set(candidates.map((hash) => hash.trim()).filter(Boolean))];
+}
+
 export async function runApprovedActions(actions: Array<{ action: PlannedAction; decision: ExecutionGateDecision }>, handlers: Record<string, ExecutionHandler>, options: ExecutionRunnerOptions): Promise<ExecutionRun[]> {
   const runs: ExecutionRun[] = [];
   for (const item of actions) {
@@ -90,12 +102,14 @@ export async function runApprovedActions(actions: Array<{ action: PlannedAction;
     try {
       const result = await handler(action);
       if (reservation) {
-        if (result.txHash) {
+        const submittedHashes = normalizeSubmittedHashes(result);
+        if (submittedHashes.length > 0) {
           options.idempotency!.store.markSubmitted(
             reservation.receipt.idempotencyKey,
             result.timestamp ?? options.timestamp,
-            result.txHash,
+            submittedHashes[submittedHashes.length - 1]!,
             result.note,
+            submittedHashes,
           );
         } else if (result.status === "failed") {
           options.idempotency!.store.markFailed(
@@ -112,7 +126,7 @@ export async function runApprovedActions(actions: Array<{ action: PlannedAction;
         }
       }
 
-      runs.push({ action, decision, event: { actionId: action.id, status: result.status, timestamp: result.timestamp ?? options.timestamp, risk: action.risk, chainId: result.chainId ?? options.chainId, txHash: result.txHash, note: result.note } });
+      runs.push({ action, decision, event: { actionId: action.id, status: result.status, timestamp: result.timestamp ?? options.timestamp, risk: action.risk, chainId: result.chainId ?? options.chainId, txHash: result.txHash ?? result.txHashes?.[result.txHashes.length - 1], note: result.note } });
     } catch (error) {
       if (reservation) {
         options.idempotency!.store.markFailed(
