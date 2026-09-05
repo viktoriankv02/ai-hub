@@ -31,14 +31,20 @@ function providerFor(options: {
   accounts?: string[];
   chainId?: string;
   sendResult?: string;
+  sendFailureAt?: number;
 }) {
   const requests: { method: string; params?: unknown[] }[] = [];
+  let sendCount = 0;
   const provider: Eip1193Provider = {
     async request(args) {
       requests.push(args);
       if (args.method === "eth_accounts") return options.accounts ?? [wallet];
       if (args.method === "eth_chainId") return options.chainId ?? "0x14a34";
-      if (args.method === "eth_sendTransaction") return options.sendResult ?? "0xtx";
+      if (args.method === "eth_sendTransaction") {
+        sendCount += 1;
+        if (options.sendFailureAt === sendCount) throw new Error(`send failed at call ${sendCount}`);
+        return options.sendResult ?? `0xtx${sendCount}`;
+      }
       throw new Error(`unexpected provider method: ${args.method}`);
     },
   };
@@ -153,6 +159,36 @@ describe("WalletExecutionAdapter", () => {
     expect(requests).to.deep.equal([]);
   });
 
+  it("returns all submitted hashes when a later batch call fails", async () => {
+    const adapter = new WalletExecutionAdapter(new ExecutionGate(), new StaticTransactionPreviewBuilder());
+    const currentPreview = previewWithCalls([
+      { to: target, data: "0x1234", chainId },
+      { to: target, data: "0x5678", chainId },
+    ]);
+    const { provider, requests } = providerFor({ sendFailureAt: 2 });
+
+    const result = await adapter.execute({
+      action,
+      decision,
+      preview: currentPreview,
+      approvedPreviewHash: currentPreview.previewHash,
+      walletAddress: wallet,
+      provider,
+      chainId,
+    });
+
+    expect(result.status).to.equal("failed");
+    expect(result.txHash).to.equal("0xtx1");
+    expect(result.txHashes).to.deep.equal(["0xtx1"]);
+    expect(result.note).to.contain("partially submitted");
+    expect(requests.map((request) => request.method)).to.deep.equal([
+      "eth_accounts",
+      "eth_chainId",
+      "eth_sendTransaction",
+      "eth_sendTransaction",
+    ]);
+  });
+
   it("sends only after account, chain and target validation", async () => {
     const adapter = new WalletExecutionAdapter(new ExecutionGate(), new StaticTransactionPreviewBuilder());
     const currentPreview = previewWithCalls([{ to: target, data: "0x1234", value: "1000", chainId }]);
@@ -170,6 +206,7 @@ describe("WalletExecutionAdapter", () => {
 
     expect(result.status).to.equal("success");
     expect(result.txHash).to.equal("0xapproved");
+    expect(result.txHashes).to.deep.equal(["0xapproved"]);
     expect(requests.map((request) => request.method)).to.deep.equal([
       "eth_accounts",
       "eth_chainId",
