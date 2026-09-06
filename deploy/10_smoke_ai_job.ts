@@ -40,7 +40,15 @@ const reporterAddress = assertAddress("AICompletionReporter", deployment.contrac
 const receiptRegistryAddress = assertAddress("AIJobReceiptRegistry", deployment.contracts.AIJobReceiptRegistry);
 const activityRegistryAddress = assertAddress("ActivityRegistry", deployment.contracts.ActivityRegistry);
 
-const token = await ethers.getContractAt("AIHubRewardToken", tokenAddress);
+const configuredEngineToken = assertAddress("AIAgentEngine.rewardToken", await (await ethers.getContractAt("AIAgentEngine", engineAddress)).rewardToken());
+if (configuredEngineToken.toLowerCase() !== tokenAddress.toLowerCase()) {
+  throw new Error(
+    `Reward token mismatch: deployment AIHubRewardToken=${tokenAddress}, but AIAgentEngine.rewardToken=${configuredEngineToken}. ` +
+      `Refusing to approve or fund a different token.`,
+  );
+}
+
+const token = await ethers.getContractAt("AIHubRewardToken", configuredEngineToken);
 const runtime = await ethers.getContractAt("AIAgentRuntime", runtimeAddress);
 const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
 const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddress);
@@ -118,9 +126,20 @@ const runnableAgentId = agentId;
 const agent = await runtime.getAgent(runnableAgentId);
 if (!agent.verified || agent.status !== 1n || agent.owner.toLowerCase() !== admin.toLowerCase()) throw new Error("Smoke agent is not verified/running or owner does not match deployer");
 
-const approveTx = await token.approve(engineAddress, reward);
-const approveReceipt = await approveTx.wait();
-if (!approveReceipt || approveReceipt.status !== 1) throw new Error(`Reward token approval failed: ${approveTx.hash}`);
+const allowanceBefore = await token.allowance(admin, engineAddress);
+console.log(`AIHUB allowance before job funding: ${ethers.formatEther(allowanceBefore)} AIHUB`);
+if (allowanceBefore < reward) {
+  const approveTx = await token.approve(engineAddress, reward);
+  const approveReceipt = await approveTx.wait();
+  if (!approveReceipt || approveReceipt.status !== 1) throw new Error(`Reward token approval failed: ${approveTx.hash}`);
+}
+
+const allowanceAfter = await token.allowance(admin, engineAddress);
+if (allowanceAfter < reward) {
+  throw new Error(
+    `Reward token allowance is still insufficient after approval: ${ethers.formatEther(allowanceAfter)} AIHUB; expected at least ${ethers.formatEther(reward)} AIHUB for engine ${engineAddress}.`,
+  );
+}
 
 const jobId = await engine.nextJobId();
 const createTx = await engine.createJob(runnableAgentId, taskHash, reward);
