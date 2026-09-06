@@ -92,9 +92,15 @@ npx hardhat run deploy/00_deploy_core.ts --network base
 npx hardhat run deploy/03_deploy_evm_adapter.ts --network base
 npx hardhat run deploy/01_configure_core.ts --network base
 npx hardhat run deploy/04_verify_configuration.ts --network base
+npm run deployment:evidence
+npm run deployment:verify-base
 ```
 
 This flow deploys/reuses the same nine core contracts plus `EVMChainAdapter`, for a minimum of ten contracts on Base Mainnet. The scripts persist the deployment manifest and refuse to reuse an address when there is no contract code or ownership does not match the configured admin.
+
+## Base Mainnet deployment integrity verification
+
+`npm run deployment:verify-base` performs an on-chain integrity check against `deployments/base.json`. It verifies that all ten expected contracts have bytecode, that ownership is consistent with the connected deployer, that `EVMChainAdapter` is authorized by `ChainRegistry`, that Base Mainnet is registered against the recorded adapter with `active=true` and `testnet=false`, and that the adapter and reporter point to the expected chain registry. The command prints BaseScan address links for all deployed contracts so the deployment can be reviewed publicly.
 
 ## Base AI job stack
 
@@ -111,6 +117,7 @@ $env:AI_PAYOUT_MANAGER_ADDRESS="0x..."
 
 npm run deployment:base-ai
 npm run deployment:evidence
+npm run deployment:verify-base
 ```
 
 The AI stack is additive: the 10-contract builder criterion is already satisfied by the core + adapter deployment count, while the AI stack increases the Mainnet contract footprint and provides a stronger product-level on-chain deployment story.
@@ -118,6 +125,8 @@ The AI stack is additive: the 10-contract builder criterion is already satisfied
 ## Evidence verification
 
 `npm run deployment:evidence` loads `deployments/<network>.json`, validates every address, checks that bytecode exists at every recorded address, prints the deployer when a private key is configured, and requires at least ten recorded contracts. This is intended to produce a deterministic deployment evidence report rather than relying on an informal contract count.
+
+`npm run deployment:verify-base` is the stronger Base Mainnet check because it validates the on-chain relationships and ownership assumptions in addition to the bytecode/count evidence.
 
 ## Example: Ink Sepolia
 
