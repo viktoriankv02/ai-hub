@@ -69,37 +69,53 @@ if (!(await activityRegistry.reporters(reporterAddress))) {
   if (!receipt || receipt.status !== 1) throw new Error(`Activity reporter configuration failed: ${tx.hash}`);
 }
 
-const expectedAgentId = await runtime.nextAgentId();
-console.log(`Preparing smoke agent ID: ${expectedAgentId.toString()}`);
-const registerTx = await runtime.registerAgent("AI Hub Smoke Agent", "local://ai-hub/smoke", "ipfs://ai-hub-smoke-agent", "1.0.0");
-const registerReceipt = await registerTx.wait();
-if (!registerReceipt || registerReceipt.status !== 1) throw new Error(`Agent registration failed: ${registerTx.hash}`);
-
-async function waitForAgent(agentId: bigint, attempts = 8, delayMs = 1500): Promise<void> {
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    if (await runtime.agentExists(agentId)) return;
-    if (attempt < attempts) {
-      console.log(`Waiting for registered smoke agent ${agentId.toString()} (attempt ${attempt}/${attempts})...`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+let agentId: bigint | undefined;
+let registrationTxHash: string | undefined;
+const ownedAgentIds = await runtime.ownerAgents(admin);
+for (let index = ownedAgentIds.length - 1; index >= 0; index -= 1) {
+  const candidateId = ownedAgentIds[index];
+  if (await runtime.canExecute(candidateId)) {
+    agentId = candidateId;
+    console.log(`Reusing existing runnable smoke agent ID: ${agentId.toString()}`);
+    break;
   }
-  const latestNextAgentId = await runtime.nextAgentId();
-  throw new Error(
-    `Smoke agent registration ${registerTx.hash} confirmed but agent ${agentId.toString()} is not present. nextAgentId=${latestNextAgentId.toString()}. Preserve the transaction and inspect Base Mainnet state before retrying.`,
-  );
 }
 
-await waitForAgent(expectedAgentId);
-const agentId = expectedAgentId;
+if (agentId === undefined) {
+  const expectedAgentId = await runtime.nextAgentId();
+  console.log(`Preparing new smoke agent ID: ${expectedAgentId.toString()}`);
+  const registerTx = await runtime.registerAgent("AI Hub Smoke Agent", "local://ai-hub/smoke", "ipfs://ai-hub-smoke-agent", "1.0.0");
+  const registerReceipt = await registerTx.wait();
+  if (!registerReceipt || registerReceipt.status !== 1) throw new Error(`Agent registration failed: ${registerTx.hash}`);
+  registrationTxHash = registerTx.hash;
 
-const verifyTx = await runtime.setVerified(agentId, true);
-const verifyReceipt = await verifyTx.wait();
-if (!verifyReceipt || verifyReceipt.status !== 1) throw new Error(`Agent verification failed: ${verifyTx.hash}`);
-const startTx = await runtime.startAgent(agentId);
-const startReceipt = await startTx.wait();
-if (!startReceipt || startReceipt.status !== 1) throw new Error(`Agent start failed: ${startTx.hash}`);
+  async function waitForAgent(agentIdToWaitFor: bigint, attempts = 8, delayMs = 1500): Promise<void> {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (await runtime.agentExists(agentIdToWaitFor)) return;
+      if (attempt < attempts) {
+        console.log(`Waiting for registered smoke agent ${agentIdToWaitFor.toString()} (attempt ${attempt}/${attempts})...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    const latestNextAgentId = await runtime.nextAgentId();
+    throw new Error(
+      `Smoke agent registration ${registerTx.hash} confirmed but agent ${agentIdToWaitFor.toString()} is not present. nextAgentId=${latestNextAgentId.toString()}. Preserve the transaction and inspect Base Mainnet state before retrying.`,
+    );
+  }
 
-const agent = await runtime.getAgent(agentId);
+  await waitForAgent(expectedAgentId);
+  agentId = expectedAgentId;
+
+  const verifyTx = await runtime.setVerified(agentId, true);
+  const verifyReceipt = await verifyTx.wait();
+  if (!verifyReceipt || verifyReceipt.status !== 1) throw new Error(`Agent verification failed: ${verifyTx.hash}`);
+  const startTx = await runtime.startAgent(agentId);
+  const startReceipt = await startTx.wait();
+  if (!startReceipt || startReceipt.status !== 1) throw new Error(`Agent start failed: ${startTx.hash}`);
+}
+
+const runnableAgentId = agentId;
+const agent = await runtime.getAgent(runnableAgentId);
 if (!agent.verified || agent.status !== 1n || agent.owner.toLowerCase() !== admin.toLowerCase()) throw new Error("Smoke agent is not verified/running or owner does not match deployer");
 
 const approveTx = await token.approve(engineAddress, reward);
@@ -107,23 +123,23 @@ const approveReceipt = await approveTx.wait();
 if (!approveReceipt || approveReceipt.status !== 1) throw new Error(`Reward token approval failed: ${approveTx.hash}`);
 
 const jobId = await engine.nextJobId();
-const createTx = await engine.createJob(agentId, taskHash, reward);
+const createTx = await engine.createJob(runnableAgentId, taskHash, reward);
 const createReceipt = await createTx.wait();
 if (!createReceipt || createReceipt.status !== 1) throw new Error(`Job creation failed: ${createTx.hash}`);
 const jobCreated = await engine.jobs(jobId);
-if (jobCreated.creator.toLowerCase() !== admin.toLowerCase() || jobCreated.agentId !== agentId || jobCreated.taskHash !== taskHash || jobCreated.reward !== reward) throw new Error(`Created smoke job ${jobId} does not match expected state`);
+if (jobCreated.creator.toLowerCase() !== admin.toLowerCase() || jobCreated.agentId !== runnableAgentId || jobCreated.taskHash !== taskHash || jobCreated.reward !== reward) throw new Error(`Created smoke job ${jobId} does not match expected state`);
 
 const assignTx = await engine.assignJob(jobId);
 const assignReceipt = await assignTx.wait();
 if (!assignReceipt || assignReceipt.status !== 1) throw new Error(`Job assignment failed: ${assignTx.hash}`);
 
 const completedAt = new Date().toISOString();
-const signatureDigest = await reporter.completionDigest(jobId, `agent-${agentId.toString()}`, taskText, resultText, completedAt);
+const signatureDigest = await reporter.completionDigest(jobId, `agent-${runnableAgentId.toString()}`, taskText, resultText, completedAt);
 const signature = ethers.Signature.from(signer.signingKey.sign(signatureDigest)).serialized;
 const attester = admin;
-const completionId = await reporter.expectedCompletionId(jobId, `agent-${agentId.toString()}`, taskText, resultText, completedAt, attester);
+const completionId = await reporter.expectedCompletionId(jobId, `agent-${runnableAgentId.toString()}`, taskText, resultText, completedAt, attester);
 
-const completionTx = await reporter.submitVerifiedCompletion(jobId, `agent-${agentId.toString()}`, taskText, resultText, completedAt, signature, smokeActivityType, smokeProjectId, smokeMetadataHash, completionId);
+const completionTx = await reporter.submitVerifiedCompletion(jobId, `agent-${runnableAgentId.toString()}`, taskText, resultText, completedAt, signature, smokeActivityType, smokeProjectId, smokeMetadataHash, completionId);
 const completionReceipt = await completionTx.wait();
 if (!completionReceipt || completionReceipt.status !== 1) throw new Error(`Verified completion failed: ${completionTx.hash}`);
 
@@ -151,10 +167,10 @@ if (activityCount === 0n) throw new Error("Smoke completion did not create an ac
 
 console.log("");
 console.log("AI Hub Base Mainnet smoke test PASSED.");
-console.log(`Agent ID:             ${agentId.toString()}`);
+console.log(`Agent ID:             ${runnableAgentId.toString()}`);
 console.log(`Job ID:               ${jobId.toString()}`);
 console.log(`Reward:               ${ethers.formatEther(reward)} AIHUB`);
-console.log(`Registration tx:      ${registerTx.hash}`);
+if (registrationTxHash) console.log(`Registration tx:      ${registrationTxHash}`);
 console.log(`Completion tx:        ${completionTx.hash}`);
 console.log(`Receipt recorded:     ${hasReceipt}`);
 console.log(`Payout tx:            ${payoutTx.hash}`);
