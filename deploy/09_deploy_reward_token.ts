@@ -78,17 +78,37 @@ if (existing) {
 }
 
 if (!existingIsValid) {
+  const deployerBalance = await ethers.provider.getBalance(deployer);
+  console.log(`Deployer: ${deployer}`);
+  console.log(`Deployer balance: ${ethers.formatEther(deployerBalance)} ETH`);
   console.log(`Deploying AIHubRewardToken with treasury ${treasury}...`);
+
   const token = await ethers.deployContract("AIHubRewardToken", [treasury]);
   const address = assertAddress("AIHubRewardToken", await token.getAddress());
+  const deploymentTx = token.deploymentTransaction();
+
   console.log(`Deployment submitted: ${address}`);
+  if (deploymentTx) console.log(`Deployment tx: ${deploymentTx.hash}`);
 
   await token.waitForDeployment();
+
+  if (deploymentTx) {
+    const receipt = await deploymentTx.wait();
+    if (!receipt) {
+      throw new Error(`AIHubRewardToken deployment receipt was not available for ${deploymentTx.hash}`);
+    }
+    if (receipt.status !== 1) {
+      throw new Error(
+        `AIHubRewardToken deployment transaction reverted: ${deploymentTx.hash}. No token contract was created.`,
+      );
+    }
+    console.log(`Deployment confirmed: block ${receipt.blockNumber}, gas used ${receipt.gasUsed.toString()}`);
+  }
 
   const code = await ethers.provider.getCode(address);
   if (code === "0x") {
     throw new Error(
-      `AIHubRewardToken deployment produced no runtime bytecode at ${address}. Run npm run build and retry.`,
+      `AIHubRewardToken deployment produced no runtime bytecode at ${address}. The deployment transaction may have failed or reverted; check the deployment tx above and deployer gas balance.`,
     );
   }
 
