@@ -1,6 +1,5 @@
 import { network } from "hardhat";
 import { EVM_NETWORKS } from "./config/networks";
-import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
 import { assertAddress, loadDeployment, saveDeployment, validateDeploymentRecord } from "./utils/deployment";
 
@@ -23,7 +22,23 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
-const admin = assertAddress("AI_HUB_ADMIN_ADDRESS", requireEnv("AI_HUB_ADMIN_ADDRESS"));
+const [deployer] = await ethers.getSigners();
+const deployerAddress = await deployer.getAddress();
+const configuredAdmin = process.env.AI_HUB_ADMIN_ADDRESS;
+const admin = configuredAdmin && ethers.isAddress(configuredAdmin)
+  ? ethers.getAddress(configuredAdmin)
+  : deployerAddress;
+
+if (configuredAdmin && !ethers.isAddress(configuredAdmin)) {
+  console.warn("AI_HUB_ADMIN_ADDRESS is invalid and will be ignored; using the deployer address as admin.");
+}
+
+if (admin.toLowerCase() !== deployerAddress.toLowerCase()) {
+  throw new Error(
+    `AI_HUB_ADMIN_ADDRESS ${admin} must match the connected deployer ${deployerAddress}`,
+  );
+}
+
 const deployment = await loadDeployment(target);
 validateDeploymentRecord(deployment, target, config.chainId);
 
