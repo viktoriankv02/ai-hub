@@ -59,6 +59,21 @@ const payoutManager = assertAddress(
 
 const activityRegistryAddress = assertAddress("ActivityRegistry", deployment.contracts.ActivityRegistry);
 
+async function assertGasSafety(): Promise<void> {
+  const balance = await ethers.provider.getBalance(deployer);
+  const minimumBalance = ethers.parseEther(process.env.AI_HUB_MIN_MAINNET_BALANCE_ETH?.trim() || "0.0001");
+
+  console.log(`Deployer balance: ${ethers.formatEther(balance)} ETH`);
+  console.log(`Minimum deployment balance: ${ethers.formatEther(minimumBalance)} ETH`);
+
+  if (balance < minimumBalance) {
+    throw new Error(
+      `Insufficient Base Mainnet ETH balance: ${ethers.formatEther(balance)} ETH. ` +
+        `Refusing AI job stack deployment below ${ethers.formatEther(minimumBalance)} ETH.`,
+    );
+  }
+}
+
 async function deployOrReuse(name: string, args: readonly unknown[]): Promise<string> {
   const saved = deployment.contracts[name];
   if (saved) {
@@ -74,54 +89,83 @@ async function deployOrReuse(name: string, args: readonly unknown[]): Promise<st
     return address;
   }
 
+  const balanceBefore = await ethers.provider.getBalance(deployer);
+  console.log(`${name}: deployer balance before deployment ${ethers.formatEther(balanceBefore)} ETH`);
+
   const contract = await ethers.deployContract(name, args);
   const tx = contract.deploymentTransaction();
   await contract.waitForDeployment();
   const address = assertAddress(name, await contract.getAddress());
+
+  if (tx) {
+    const receipt = await tx.wait();
+    if (!receipt) throw new Error(`${name} deployment receipt was not available for ${tx.hash}`);
+    if (receipt.status !== 1) {
+      throw new Error(`${name} deployment reverted: ${tx.hash}`);
+    }
+    console.log(`${name} deployment tx: ${tx.hash}`);
+    console.log(`${name} deployment confirmed: block ${receipt.blockNumber}, gas used ${receipt.gasUsed.toString()}`);
+  }
+
+  const code = await ethers.provider.getCode(address);
+  if (code === "0x") {
+    throw new Error(`${name} deployment confirmed but runtime bytecode is not yet visible at ${address}`);
+  }
+
   deployment.contracts[name] = address;
   await saveDeployment({ ...deployment, deployedAt: new Date().toISOString() });
   console.log(`Deployed ${name}: ${address}`);
-  if (tx) console.log(`${name} deployment tx: ${tx.hash}`);
   return address;
 }
 
+async function sendConfiguration(txPromise: Promise<import("ethers").TransactionResponse>, label: string): Promise<void> {
+  const tx = await txPromise;
+  const receipt = await tx.wait();
+  if (!receipt) throw new Error(`${label} receipt was not available for ${tx.hash}`);
+  if (receipt.status !== 1) throw new Error(`${label} transaction reverted: ${tx.hash}`);
+  console.log(`${label}: ${tx.hash}`);
+}
+
+await assertGasSafety();
+
 const runtimeAddress = await deployOrReuse("AIAgentRuntime", [admin]);
+await assertGasSafety();
+
 const engineAddress = await deployOrReuse("AIAgentEngine", [admin, runtimeAddress, rewardToken]);
+await assertGasSafety();
+
 const receiptRegistryAddress = await deployOrReuse("AIJobReceiptRegistry", [admin]);
+await assertGasSafety();
+
 const reporterAddress = await deployOrReuse(
   "AICompletionReporter",
   [admin, engineAddress, activityRegistryAddress],
 );
+await assertGasSafety();
 
 const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
 const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddress);
 const receiptRegistry = await ethers.getContractAt("AIJobReceiptRegistry", receiptRegistryAddress);
 
 if (!(await engine.completionReporters(reporterAddress))) {
-  await (await engine.setCompletionReporter(reporterAddress, true)).wait();
-  console.log("Configured completion reporter authorization.");
+  await sendConfiguration(engine.setCompletionReporter(reporterAddress, true), "Configured completion reporter authorization");
 }
 if (!(await engine.payoutManagers(payoutManager))) {
-  await (await engine.setPayoutManager(payoutManager, true)).wait();
-  console.log("Configured payout manager authorization.");
+  await sendConfiguration(engine.setPayoutManager(payoutManager, true), "Configured payout manager authorization");
 }
 if (!(await reporter.authorizedCallers(completionCaller))) {
-  await (await reporter.setAuthorizedCaller(completionCaller, true)).wait();
-  console.log("Configured completion caller authorization.");
+  await sendConfiguration(reporter.setAuthorizedCaller(completionCaller, true), "Configured completion caller authorization");
 }
 if (!(await reporter.attesters(attester))) {
-  await (await reporter.setAttester(attester, true)).wait();
-  console.log("Configured attester authorization.");
+  await sendConfiguration(reporter.setAttester(attester, true), "Configured attester authorization");
 }
 
 const currentReceiptRegistry = await reporter.receiptRegistry();
 if (currentReceiptRegistry.toLowerCase() !== receiptRegistryAddress.toLowerCase()) {
-  await (await reporter.setReceiptRegistry(receiptRegistryAddress)).wait();
-  console.log("Configured receipt registry.");
+  await sendConfiguration(reporter.setReceiptRegistry(receiptRegistryAddress), "Configured receipt registry");
 }
 if (!(await receiptRegistry.reporters(reporterAddress))) {
-  await (await receiptRegistry.setReporter(reporterAddress, true)).wait();
-  console.log("Configured receipt reporter authorization.");
+  await sendConfiguration(receiptRegistry.setReporter(reporterAddress, true), "Configured receipt reporter authorization");
 }
 
 await saveDeployment({ ...deployment, deployedAt: new Date().toISOString() });
