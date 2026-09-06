@@ -18,10 +18,7 @@ const completionCaller = requireEnv("AI_COMPLETION_CALLER_ADDRESS");
 const attester = process.env.AI_COMPLETION_ATTESTER_ADDRESS ?? completionCaller;
 const activityRegistryAddress = requireEnv("ACTIVITY_REGISTRY_ADDRESS");
 const activityType = process.env.AI_JOB_ACTIVITY_TYPE ?? "AI_JOB_COMPLETED";
-
-const maxJobReward = BigInt(process.env.AI_MAX_JOB_REWARD ?? "0");
-const completionTimeout = BigInt(process.env.AI_COMPLETION_TIMEOUT ?? "0");
-const maxOpenJobsPerCreator = BigInt(process.env.AI_MAX_OPEN_JOBS_PER_CREATOR ?? "0");
+const receiptRegistryAddress = process.env.AI_JOB_RECEIPT_REGISTRY_ADDRESS?.trim();
 
 const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
 const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddress);
@@ -33,14 +30,16 @@ await (await engine.setCompletionReporter(reporterAddress, true)).wait();
 console.log(`Authorizing payout manager ${completionCaller} in AIAgentEngine`);
 await (await engine.setPayoutManager(completionCaller, true)).wait();
 
-console.log(`Applying AI job risk limits`);
-await (await engine.setJobRiskLimits(maxJobReward, completionTimeout, maxOpenJobsPerCreator)).wait();
-
 console.log(`Authorizing completion caller ${completionCaller} in AICompletionReporter`);
-await (await reporter.setCompletionCaller(completionCaller, true)).wait();
+await (await reporter.setAuthorizedCaller(completionCaller, true)).wait();
 
 console.log(`Authorizing attester ${attester} in AICompletionReporter`);
 await (await reporter.setAttester(attester, true)).wait();
+
+if (receiptRegistryAddress) {
+  console.log(`Configuring receipt registry ${receiptRegistryAddress} in AICompletionReporter`);
+  await (await reporter.setReceiptRegistry(receiptRegistryAddress)).wait();
+}
 
 console.log(`Authorizing reporter ${reporterAddress} in ActivityRegistry`);
 await (await registry.setActivityType(ethers.id(activityType), true)).wait();
@@ -54,6 +53,4 @@ console.log(`Completion caller: ${completionCaller}`);
 console.log(`Attester: ${attester}`);
 console.log(`ActivityRegistry: ${activityRegistryAddress}`);
 console.log(`Activity type: ${activityType}`);
-console.log(`Max job reward: ${maxJobReward}`);
-console.log(`Completion timeout: ${completionTimeout}s`);
-console.log(`Max open jobs per creator: ${maxOpenJobsPerCreator}`);
+if (receiptRegistryAddress) console.log(`Receipt registry: ${receiptRegistryAddress}`);
