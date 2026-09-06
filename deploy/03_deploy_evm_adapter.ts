@@ -66,22 +66,44 @@ if (!adapterAddress) {
 }
 
 const chainRegistry = await ethers.getContractAt("ChainRegistry", deployment.contracts.ChainRegistry);
-if (!(await chainRegistry.adapterAuthorized(adapterAddress))) {
-  await (await chainRegistry.setAdapterAuthorized(adapterAddress, true)).wait();
+
+let adapterAuthorized = await chainRegistry.adapterAuthorized(adapterAddress);
+if (!adapterAuthorized) {
+  const tx = await chainRegistry.setAdapterAuthorized(adapterAddress, true);
+  console.log(`Authorizing EVM adapter in ChainRegistry: ${tx.hash}`);
+  const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`Adapter authorization transaction failed: ${tx.hash}`);
+  }
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    adapterAuthorized = await chainRegistry.adapterAuthorized(adapterAddress);
+    if (adapterAuthorized) break;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
 }
+
+if (!adapterAuthorized) {
+  throw new Error(`ChainRegistry did not persist adapter authorization for ${adapterAddress}`);
+}
+
+console.log(`EVM adapter authorized: ${adapterAddress}`);
 
 const registered = await chainRegistry.isSupported(config.chainId);
 if (!registered) {
-  await (
-    await chainRegistry.registerChain(
-      config.chainId,
-      ethers.id(target.toUpperCase()),
-      ethers.id("EVM"),
-      adapterAddress,
-      true,
-      config.testnet,
-    )
-  ).wait();
+  const tx = await chainRegistry.registerChain(
+    config.chainId,
+    ethers.id(target.toUpperCase()),
+    ethers.id("EVM"),
+    adapterAddress,
+    true,
+    config.testnet,
+  );
+  console.log(`Registering ${config.name} in ChainRegistry: ${tx.hash}`);
+  const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`Chain registration transaction failed: ${tx.hash}`);
+  }
 } else {
   const chain = await chainRegistry.getChain(config.chainId);
   if (chain.adapter.toLowerCase() !== adapterAddress.toLowerCase()) {
