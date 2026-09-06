@@ -28,11 +28,6 @@ if (admin.toLowerCase() !== deployer.toLowerCase()) {
   throw new Error(`Admin ${admin} does not match deployer ${deployer}`);
 }
 
-const rewardToken = assertAddress(
-  "AI_REWARD_TOKEN_ADDRESS",
-  process.env.AI_REWARD_TOKEN_ADDRESS ?? "",
-);
-
 const requiredCore = [
   "ActivityRegistry",
   "ChainRegistry",
@@ -45,6 +40,19 @@ for (const name of requiredCore) {
   if (code === "0x") throw new Error(`${name} has no bytecode at ${address}`);
 }
 
+const rewardTokenInput = process.env.AI_REWARD_TOKEN_ADDRESS?.trim();
+if (!rewardTokenInput) {
+  console.log("Base AI job stack readiness");
+  console.log(`Network:          ${config.name} (${config.chainId})`);
+  console.log(`Deployer/admin:   ${deployer}`);
+  console.log(`Core footprint:   10 contracts verified`);
+  console.log("Reward token:     MISSING");
+  console.log("");
+  console.log("NOT READY: set AI_REWARD_TOKEN_ADDRESS to an existing Mainnet ERC-20 reward token address before deploying the AI job stack.");
+  process.exit(2);
+}
+
+const rewardToken = assertAddress("AI_REWARD_TOKEN_ADDRESS", rewardTokenInput);
 const rewardTokenCode = await ethers.provider.getCode(rewardToken);
 if (rewardTokenCode === "0x") {
   throw new Error(`AI_REWARD_TOKEN_ADDRESS has no deployed bytecode: ${rewardToken}`);
