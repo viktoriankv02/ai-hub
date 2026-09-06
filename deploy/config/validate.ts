@@ -3,9 +3,13 @@ import { EVM_NETWORKS } from "./networks";
 export function validateNetwork(key: string): void {
   const network = EVM_NETWORKS[key];
   if (!network) throw new Error(`Unsupported AI Hub network: ${key}`);
-  if (!network.testnet && process.env.AI_HUB_ALLOW_MAINNET_DEPLOYMENT !== "true") {
+
+  const explicitBaseMainnet =
+    key === "base" && process.env.AI_HUB_ALLOW_MAINNET_DEPLOYMENT === "true";
+
+  if (!network.testnet && !explicitBaseMainnet) {
     throw new Error(
-      `Refusing non-testnet deployment: ${network.name}. Set AI_HUB_ALLOW_MAINNET_DEPLOYMENT=true for an explicit mainnet deployment.`,
+      `Refusing non-testnet deployment: ${network.name}. Base Mainnet requires AI_HUB_ALLOW_MAINNET_DEPLOYMENT=true.`,
     );
   }
 }
