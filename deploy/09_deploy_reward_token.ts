@@ -40,40 +40,58 @@ const expectedTotalSupply = 1_000_000_000n * 10n ** 18n;
 const existing = deployment.contracts.AIHubRewardToken;
 let existingIsValid = false;
 
+async function waitForRuntimeBytecode(address: string, attempts = 12, delayMs = 2500): Promise<string> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const code = await ethers.provider.getCode(address);
+    if (code !== "0x") return code;
+    if (attempt < attempts) {
+      console.log(`Waiting for runtime bytecode at ${address} (attempt ${attempt}/${attempts})...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return "0x";
+}
+
+async function readExistingToken(address: string): Promise<boolean> {
+  const code = await ethers.provider.getCode(address);
+  if (code === "0x") return false;
+
+  const token = await ethers.getContractAt("AIHubRewardToken", address);
+  try {
+    const [name, symbol, totalSupply, treasuryBalance] = await Promise.all([
+      token.name(),
+      token.symbol(),
+      token.totalSupply(),
+      token.balanceOf(treasury),
+    ]);
+
+    return (
+      name === "AI Hub Reward Token" &&
+      symbol === "AIHUB" &&
+      totalSupply === expectedTotalSupply &&
+      treasuryBalance > 0n
+    );
+  } catch {
+    return false;
+  }
+}
+
 if (existing) {
   const address = assertAddress("AIHubRewardToken", existing);
-  const code = await ethers.provider.getCode(address);
-
-  if (code !== "0x") {
+  if (await readExistingToken(address)) {
     const token = await ethers.getContractAt("AIHubRewardToken", address);
-    try {
-      const [name, symbol, totalSupply, treasuryBalance] = await Promise.all([
-        token.name(),
-        token.symbol(),
-        token.totalSupply(),
-        token.balanceOf(treasury),
-      ]);
-
-      existingIsValid =
-        name === "AI Hub Reward Token" &&
-        symbol === "AIHUB" &&
-        totalSupply === expectedTotalSupply &&
-        treasuryBalance > 0n;
-
-      if (existingIsValid) {
-        console.log(`Reusing AIHubRewardToken: ${address}`);
-        console.log(`Treasury: ${treasury}`);
-        console.log(`Total supply: ${totalSupply.toString()}`);
-        process.env.AI_REWARD_TOKEN_ADDRESS = address;
-      } else {
-        console.log(`Ignoring stale AIHubRewardToken record at ${address}: token metadata or supply does not match.`);
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      console.log(`Ignoring stale AIHubRewardToken record at ${address}: contract is not a compatible AIHUB token (${reason}).`);
-    }
+    const [totalSupply, treasuryBalance] = await Promise.all([
+      token.totalSupply(),
+      token.balanceOf(treasury),
+    ]);
+    existingIsValid = true;
+    console.log(`Reusing AIHubRewardToken: ${address}`);
+    console.log(`Treasury: ${treasury}`);
+    console.log(`Total supply: ${totalSupply.toString()}`);
+    console.log(`Treasury balance: ${treasuryBalance.toString()}`);
+    process.env.AI_REWARD_TOKEN_ADDRESS = address;
   } else {
-    console.log(`Ignoring stale AIHubRewardToken record at ${address}: no bytecode at address.`);
+    console.log(`Ignoring stale AIHubRewardToken record at ${address}.`);
   }
 }
 
@@ -105,15 +123,18 @@ if (!existingIsValid) {
     console.log(`Deployment confirmed: block ${receipt.blockNumber}, gas used ${receipt.gasUsed.toString()}`);
   }
 
-  const code = await ethers.provider.getCode(address);
+  const code = await waitForRuntimeBytecode(address);
   if (code === "0x") {
     throw new Error(
-      `AIHubRewardToken deployment produced no runtime bytecode at ${address}. The deployment transaction may have failed or reverted; check the deployment tx above and deployer gas balance.`,
+      `AIHubRewardToken deployment was confirmed but runtime bytecode was not visible after polling at ${address}. Check the transaction on BaseScan before attempting another deployment.`,
     );
   }
 
-  const totalSupply = await token.totalSupply();
-  const treasuryBalance = await token.balanceOf(treasury);
+  const tokenAfterConfirmation = await ethers.getContractAt("AIHubRewardToken", address);
+  const [totalSupply, treasuryBalance] = await Promise.all([
+    tokenAfterConfirmation.totalSupply(),
+    tokenAfterConfirmation.balanceOf(treasury),
+  ]);
 
   if (totalSupply !== expectedTotalSupply) {
     throw new Error(`Unexpected deployed AIHUB total supply: ${totalSupply}`);
