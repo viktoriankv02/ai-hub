@@ -6,7 +6,14 @@ const target = process.env.AI_HUB_NETWORK ?? "baseSepolia";
 const config = EVM_NETWORKS[target];
 
 if (!config) throw new Error(`Unknown AI_HUB_NETWORK: ${target}`);
-if (!config.testnet) throw new Error(`Refusing non-testnet target: ${target}`);
+
+const explicitBaseMainnet =
+  target === "base" && process.env.AI_HUB_ALLOW_MAINNET_DEPLOYMENT === "true";
+if (!config.testnet && !explicitBaseMainnet) {
+  throw new Error(
+    `Refusing non-testnet target: ${target}. Base Mainnet requires AI_HUB_ALLOW_MAINNET_DEPLOYMENT=true.`,
+  );
+}
 
 const rpcUrl = process.env[config.rpcEnv];
 if (!rpcUrl) throw new Error(`Missing ${config.rpcEnv}`);
@@ -37,7 +44,7 @@ console.log(`Deployer: ${address}`);
 console.log(`Balance: ${balance.toString()} wei`);
 
 if (balance === 0n) {
-  console.warn("WARNING: deployer has zero balance on this testnet.");
+  console.warn(`WARNING: deployer has zero balance on ${config.name}.`);
 }
 
 if (target === "arcTestnet") {
