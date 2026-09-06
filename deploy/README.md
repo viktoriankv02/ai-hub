@@ -1,6 +1,6 @@
 # AI Hub deployment
 
-The deployment layer is intentionally testnet-first. Mainnet deployment is disabled until the protocol passes local integration tests, testnet verification, security review, and an explicit governance decision.
+The deployment layer is testnet-first. Base Mainnet deployment is available only through an explicit deployment gate after local integration tests and testnet verification. Never commit private keys or RPC credentials.
 
 ## Supported EVM testnets
 
@@ -25,9 +25,11 @@ Copy the required variables into a local `.env` file. Never commit private keys 
 ```text
 DEPLOYER_PRIVATE_KEY=...
 AI_HUB_ADMIN_ADDRESS=...
-AI_HUB_NETWORK=inkSepolia
+AI_HUB_NETWORK=baseSepolia
+AI_HUB_ALLOW_MAINNET_DEPLOYMENT=false
 
 SEPOLIA_RPC_URL=...
+BASE_RPC_URL=...
 BASE_SEPOLIA_RPC_URL=...
 INK_SEPOLIA_RPC_URL=https://rpc-gel-sepolia.inkonchain.com
 ARBITRUM_SEPOLIA_RPC_URL=...
@@ -45,7 +47,7 @@ ARC_EXPLORER_URL=https://testnet.arcscan.app
 TEMPO_EXPLORER_URL=https://explore.tempo.xyz
 ```
 
-The deployment scripts refuse targets that are not configured as testnets.
+The default deployment posture remains testnet-only. Base Mainnet (`8453`) requires the explicit `AI_HUB_ALLOW_MAINNET_DEPLOYMENT=true` gate.
 
 ## Deployment order
 
@@ -55,11 +57,39 @@ Run the steps in this order. Each step is designed to be safe to rerun against t
 00_deploy_core.ts
 03_deploy_evm_adapter.ts
 01_configure_core.ts
-02_register_chain.ts
 04_verify_configuration.ts
 ```
 
-The adapter step owns `ChainRegistry` registration. Core configuration grants permissions and wires the deployed modules together. The verification step checks the resulting on-chain configuration.
+The core step deploys nine contracts. The EVM adapter step adds the tenth contract and registers the selected chain in `ChainRegistry`. The configuration step grants the required core permissions. The verification step checks the resulting on-chain configuration.
+
+## Example: Base Sepolia
+
+```powershell
+$env:AI_HUB_NETWORK="baseSepolia"
+$env:AI_HUB_ADMIN_ADDRESS="0x..."
+npx hardhat run deploy/00_deploy_core.ts --network baseSepolia
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network baseSepolia
+npx hardhat run deploy/01_configure_core.ts --network baseSepolia
+npx hardhat run deploy/04_verify_configuration.ts --network baseSepolia
+```
+
+## Example: Base Mainnet
+
+Base Mainnet is deliberately gated. Do not set the gate until the deployer address, RPC endpoint, contract ownership expectations, and deployment plan have been reviewed.
+
+```powershell
+$env:AI_HUB_NETWORK="base"
+$env:AI_HUB_ADMIN_ADDRESS="0x..."
+$env:AI_HUB_ALLOW_MAINNET_DEPLOYMENT="true"
+
+npm run preflight
+npx hardhat run deploy/00_deploy_core.ts --network base
+npx hardhat run deploy/03_deploy_evm_adapter.ts --network base
+npx hardhat run deploy/01_configure_core.ts --network base
+npx hardhat run deploy/04_verify_configuration.ts --network base
+```
+
+This flow deploys/reuses the same nine core contracts plus `EVMChainAdapter`, for a minimum of ten contracts on Base Mainnet. The scripts persist the deployment manifest and refuse to reuse an address when there is no contract code or ownership does not match the configured admin.
 
 ## Example: Ink Sepolia
 
