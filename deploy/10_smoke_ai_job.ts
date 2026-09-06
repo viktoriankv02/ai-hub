@@ -1,5 +1,4 @@
 import { network } from "hardhat";
-import { JsonRpcProvider } from "ethers";
 import { EVM_NETWORKS } from "./config/networks";
 import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
@@ -16,13 +15,8 @@ const { ethers } = await network.connect();
 const connectedChainId = Number((await ethers.provider.getNetwork()).chainId);
 if (connectedChainId !== config.chainId) throw new Error(`Network mismatch: connected ${connectedChainId}, expected ${config.chainId}`);
 
-const verificationRpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || "https://base.drpc.org";
-const verificationProvider = new JsonRpcProvider(verificationRpcUrl, config.chainId, { staticNetwork: true });
-
 async function hasBytecode(address: string): Promise<boolean> {
-  const primary = await ethers.provider.getCode(address);
-  if (primary !== "0x") return true;
-  return (await verificationProvider.getCode(address)) !== "0x";
+  return (await ethers.provider.getCode(address)) !== "0x";
 }
 
 const deployment = await loadDeployment(target);
@@ -31,7 +25,7 @@ validateDeploymentRecord(deployment, target, config.chainId);
 const requiredContracts = ["AIHubRewardToken", "AIAgentRuntime", "AIAgentEngine", "AIJobReceiptRegistry", "AICompletionReporter", "ActivityRegistry"] as const;
 for (const name of requiredContracts) {
   const address = assertAddress(name, deployment.contracts[name]);
-  if (!(await hasBytecode(address))) throw new Error(`${name} has no deployed bytecode on primary or verification RPC: ${address}`);
+  if (!(await hasBytecode(address))) throw new Error(`${name} has no deployed bytecode on Base Mainnet: ${address}`);
 }
 
 const [signer] = await ethers.getSigners();
@@ -75,10 +69,28 @@ if (!(await activityRegistry.reporters(reporterAddress))) {
   if (!receipt || receipt.status !== 1) throw new Error(`Activity reporter configuration failed: ${tx.hash}`);
 }
 
-const agentId = await runtime.nextAgentId();
+const expectedAgentId = await runtime.nextAgentId();
+console.log(`Preparing smoke agent ID: ${expectedAgentId.toString()}`);
 const registerTx = await runtime.registerAgent("AI Hub Smoke Agent", "local://ai-hub/smoke", "ipfs://ai-hub-smoke-agent", "1.0.0");
 const registerReceipt = await registerTx.wait();
 if (!registerReceipt || registerReceipt.status !== 1) throw new Error(`Agent registration failed: ${registerTx.hash}`);
+
+async function waitForAgent(agentId: bigint, attempts = 8, delayMs = 1500): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await runtime.agentExists(agentId)) return;
+    if (attempt < attempts) {
+      console.log(`Waiting for registered smoke agent ${agentId.toString()} (attempt ${attempt}/${attempts})...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  const latestNextAgentId = await runtime.nextAgentId();
+  throw new Error(
+    `Smoke agent registration ${registerTx.hash} confirmed but agent ${agentId.toString()} is not present. nextAgentId=${latestNextAgentId.toString()}. Preserve the transaction and inspect Base Mainnet state before retrying.`,
+  );
+}
+
+await waitForAgent(expectedAgentId);
+const agentId = expectedAgentId;
 
 const verifyTx = await runtime.setVerified(agentId, true);
 const verifyReceipt = await verifyTx.wait();
@@ -142,6 +154,7 @@ console.log("AI Hub Base Mainnet smoke test PASSED.");
 console.log(`Agent ID:             ${agentId.toString()}`);
 console.log(`Job ID:               ${jobId.toString()}`);
 console.log(`Reward:               ${ethers.formatEther(reward)} AIHUB`);
+console.log(`Registration tx:      ${registerTx.hash}`);
 console.log(`Completion tx:        ${completionTx.hash}`);
 console.log(`Receipt recorded:     ${hasReceipt}`);
 console.log(`Payout tx:            ${payoutTx.hash}`);
