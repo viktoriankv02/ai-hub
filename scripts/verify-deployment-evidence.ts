@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { JsonRpcProvider, Wallet } from "ethers";
 import { EVM_NETWORKS } from "../deploy/config/networks";
-import { requireEnv } from "../deploy/config/env";
 import {
   assertAddress,
   loadDeployment,
@@ -15,16 +14,56 @@ if (!config) throw new Error(`Unknown AI_HUB_NETWORK: ${target}`);
 const record = await loadDeployment(target);
 validateDeploymentRecord(record, target, config.chainId);
 
-const rpcUrl = requireEnv(config.rpcEnv);
-const provider = new JsonRpcProvider(
-  rpcUrl,
-  config.chainId,
-  { staticNetwork: true },
-);
+const configuredRpc = process.env[config.rpcEnv]?.trim();
+const fallbackRpc = target === "baseSepolia"
+  ? "https://sepolia.base.org"
+  : target === "base"
+    ? "https://mainnet.base.org"
+    : undefined;
 
-const network = await provider.getNetwork();
-if (network.chainId !== BigInt(config.chainId)) {
-  throw new Error(`RPC chain mismatch: expected ${config.chainId}, got ${network.chainId}`);
+const rpcCandidates = [...new Set(
+  [configuredRpc, fallbackRpc].filter((value): value is string => Boolean(value)),
+)];
+
+if (rpcCandidates.length === 0) {
+  throw new Error(`Missing ${config.rpcEnv}`);
+}
+
+let provider: JsonRpcProvider | undefined;
+let rpcUrl = "";
+let lastError: unknown;
+
+for (const candidate of rpcCandidates) {
+  const candidateProvider = new JsonRpcProvider(
+    candidate,
+    config.chainId,
+    { staticNetwork: true },
+  );
+
+  try {
+    const network = await candidateProvider.getNetwork();
+    if (network.chainId !== BigInt(config.chainId)) {
+      throw new Error(`RPC chain mismatch: expected ${config.chainId}, got ${network.chainId}`);
+    }
+    await candidateProvider.getBlockNumber();
+    provider = candidateProvider;
+    rpcUrl = candidate;
+
+    if (candidate !== configuredRpc && configuredRpc) {
+      console.warn(`Configured RPC failed; using Base fallback RPC: ${candidate}`);
+    }
+    break;
+  } catch (error) {
+    lastError = error;
+  }
+}
+
+if (!provider) {
+  throw new Error(
+    `Unable to reach ${config.name} RPC (${rpcCandidates.join(", ")}): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
 }
 
 const entries = Object.entries(record.contracts).map(([name, address]) => ({
@@ -50,6 +89,7 @@ if (privateKey) {
 
 const minimum = 10;
 console.log(`Deployment evidence: ${config.name} (${config.chainId})`);
+console.log(`RPC: ${rpcUrl}`);
 console.log(`Manifest: deployments/${target}.json`);
 console.log(`Contract count: ${entries.length}`);
 for (const entry of entries) console.log(`${entry.name}: ${entry.address}`);
