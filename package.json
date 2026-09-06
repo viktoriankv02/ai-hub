@@ -17,6 +17,7 @@
     "deployment:reward-token": "hardhat run deploy/09_deploy_reward_token.ts --network base",
     "deployment:base-ai": "hardhat run deploy/08_deploy_base_ai_stack.ts --network base",
     "deployment:recover-runtime": "hardhat run deploy/11_recover_ai_runtime.ts --network base",
+    "deployment:diagnose-ai-agent": "hardhat run deploy/11_diagnose_ai_agent.ts --network base",
     "deployment:smoke-ai": "hardhat run deploy/10_smoke_ai_job.ts --network base",
     "drop-hunter": "tsx scripts/drop-hunter-report.ts",
     "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
