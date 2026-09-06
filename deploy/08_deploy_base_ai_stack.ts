@@ -1,4 +1,5 @@
 import { network } from "hardhat";
+import { JsonRpcProvider, TransactionResponse } from "ethers";
 import { EVM_NETWORKS } from "./config/networks";
 import { requireEnv } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
@@ -17,6 +18,19 @@ if (connectedChainId !== config.chainId) {
   throw new Error(
     `Network mismatch: Hardhat connected to chain ${connectedChainId}, but AI_HUB_NETWORK=${target} expects ${config.chainId}`,
   );
+}
+
+const verificationRpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || "https://base.drpc.org";
+const verificationProvider = new JsonRpcProvider(verificationRpcUrl, config.chainId, { staticNetwork: true });
+
+async function getRuntimeCode(address: string): Promise<string> {
+  const primaryCode = await ethers.provider.getCode(address);
+  if (primaryCode !== "0x") return primaryCode;
+  const fallbackCode = await verificationProvider.getCode(address);
+  if (fallbackCode !== "0x") {
+    console.log(`Bytecode visible through verification RPC ${verificationRpcUrl}: ${address}`);
+  }
+  return fallbackCode;
 }
 
 const deployment = await loadDeployment(target);
@@ -40,7 +54,7 @@ if (!rewardTokenInput) {
   );
 }
 const rewardToken = assertAddress("AI_REWARD_TOKEN_ADDRESS", rewardTokenInput);
-if ((await ethers.provider.getCode(rewardToken)) === "0x") {
+if ((await getRuntimeCode(rewardToken)) === "0x") {
   throw new Error(`AI_REWARD_TOKEN_ADDRESS has no deployed bytecode: ${rewardToken}`);
 }
 
@@ -62,10 +76,8 @@ const activityRegistryAddress = assertAddress("ActivityRegistry", deployment.con
 async function assertGasSafety(): Promise<void> {
   const balance = await ethers.provider.getBalance(deployer);
   const minimumBalance = ethers.parseEther(process.env.AI_HUB_MIN_MAINNET_BALANCE_ETH?.trim() || "0.0001");
-
   console.log(`Deployer balance: ${ethers.formatEther(balance)} ETH`);
   console.log(`Minimum deployment balance: ${ethers.formatEther(minimumBalance)} ETH`);
-
   if (balance < minimumBalance) {
     throw new Error(
       `Insufficient Base Mainnet ETH balance: ${ethers.formatEther(balance)} ETH. ` +
@@ -78,8 +90,8 @@ async function deployOrReuse(name: string, args: readonly unknown[]): Promise<st
   const saved = deployment.contracts[name];
   if (saved) {
     const address = assertAddress(name, saved);
-    const code = await ethers.provider.getCode(address);
-    if (code === "0x") throw new Error(`${name} is recorded at ${address}, but no contract code exists there`);
+    const code = await getRuntimeCode(address);
+    if (code === "0x") throw new Error(`${name} is recorded at ${address}, but no contract code exists on primary or verification RPC`);
     const contract = await ethers.getContractAt(name, address);
     const owner = await contract.owner();
     if (owner.toLowerCase() !== admin.toLowerCase()) {
@@ -100,16 +112,19 @@ async function deployOrReuse(name: string, args: readonly unknown[]): Promise<st
   if (tx) {
     const receipt = await tx.wait();
     if (!receipt) throw new Error(`${name} deployment receipt was not available for ${tx.hash}`);
-    if (receipt.status !== 1) {
-      throw new Error(`${name} deployment reverted: ${tx.hash}`);
-    }
+    if (receipt.status !== 1) throw new Error(`${name} deployment reverted: ${tx.hash}`);
     console.log(`${name} deployment tx: ${tx.hash}`);
     console.log(`${name} deployment confirmed: block ${receipt.blockNumber}, gas used ${receipt.gasUsed.toString()}`);
   }
 
-  const code = await ethers.provider.getCode(address);
+  let code = await getRuntimeCode(address);
+  for (let attempt = 1; attempt <= 6 && code === "0x"; attempt += 1) {
+    console.log(`Waiting for runtime bytecode at ${address} (attempt ${attempt}/6)...`);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    code = await getRuntimeCode(address);
+  }
   if (code === "0x") {
-    throw new Error(`${name} deployment confirmed but runtime bytecode is not yet visible at ${address}`);
+    throw new Error(`${name} deployment confirmed but runtime bytecode is not visible on primary or verification RPC at ${address}; preserve tx ${tx?.hash ?? "unknown"} and recover before retrying.`);
   }
 
   deployment.contracts[name] = address;
@@ -118,7 +133,7 @@ async function deployOrReuse(name: string, args: readonly unknown[]): Promise<st
   return address;
 }
 
-async function sendConfiguration(txPromise: Promise<import("ethers").TransactionResponse>, label: string): Promise<void> {
+async function sendConfiguration(txPromise: Promise<TransactionResponse>, label: string): Promise<void> {
   const tx = await txPromise;
   const receipt = await tx.wait();
   if (!receipt) throw new Error(`${label} receipt was not available for ${tx.hash}`);
@@ -127,25 +142,19 @@ async function sendConfiguration(txPromise: Promise<import("ethers").Transaction
 }
 
 await assertGasSafety();
-
 const runtimeAddress = await deployOrReuse("AIAgentRuntime", [admin]);
 await assertGasSafety();
-
 const engineAddress = await deployOrReuse("AIAgentEngine", [admin, runtimeAddress, rewardToken]);
 await assertGasSafety();
-
 const receiptRegistryAddress = await deployOrReuse("AIJobReceiptRegistry", [admin]);
 await assertGasSafety();
-
-const reporterAddress = await deployOrReuse(
-  "AICompletionReporter",
-  [admin, engineAddress, activityRegistryAddress],
-);
+const reporterAddress = await deployOrReuse("AICompletionReporter", [admin, engineAddress, activityRegistryAddress]);
 await assertGasSafety();
 
 const engine = await ethers.getContractAt("AIAgentEngine", engineAddress);
 const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddress);
 const receiptRegistry = await ethers.getContractAt("AIJobReceiptRegistry", receiptRegistryAddress);
+const activityRegistry = await ethers.getContractAt("ActivityRegistry", activityRegistryAddress);
 
 if (!(await engine.completionReporters(reporterAddress))) {
   await sendConfiguration(engine.setCompletionReporter(reporterAddress, true), "Configured completion reporter authorization");
@@ -158,6 +167,9 @@ if (!(await reporter.authorizedCallers(completionCaller))) {
 }
 if (!(await reporter.attesters(attester))) {
   await sendConfiguration(reporter.setAttester(attester, true), "Configured attester authorization");
+}
+if (!(await activityRegistry.reporters(reporterAddress))) {
+  await sendConfiguration(activityRegistry.setReporter(reporterAddress, true), "Configured AI completion reporter in ActivityRegistry");
 }
 
 const currentReceiptRegistry = await reporter.receiptRegistry();
