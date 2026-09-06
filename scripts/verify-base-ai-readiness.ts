@@ -40,15 +40,15 @@ for (const name of requiredCore) {
   if (code === "0x") throw new Error(`${name} has no bytecode at ${address}`);
 }
 
-const rewardTokenInput = process.env.AI_REWARD_TOKEN_ADDRESS?.trim();
+const rewardTokenInput = process.env.AI_REWARD_TOKEN_ADDRESS?.trim() || deployment.contracts.AIHubRewardToken;
 if (!rewardTokenInput) {
   console.log("Base AI job stack readiness");
   console.log(`Network:          ${config.name} (${config.chainId})`);
   console.log(`Deployer/admin:   ${deployer}`);
-  console.log(`Core footprint:   10 contracts verified`);
+  console.log("Core footprint:   10 contracts verified");
   console.log("Reward token:     MISSING");
   console.log("");
-  console.log("NOT READY: set AI_REWARD_TOKEN_ADDRESS to an existing Mainnet ERC-20 reward token address before deploying the AI job stack.");
+  console.log("NOT READY: deploy the production AI Hub Reward Token with npm run deployment:reward-token.");
   process.exit(2);
 }
 
@@ -128,7 +128,7 @@ const balance = await provider.getBalance(deployer);
 console.log("Base AI job stack readiness");
 console.log(`Network:          ${config.name} (${config.chainId})`);
 console.log(`Deployer/admin:   ${deployer}`);
-console.log(`Core footprint:   10 contracts verified`);
+console.log("Core footprint:   10 contracts verified");
 console.log(`Reward token:     ${rewardToken}`);
 console.log(`Completion caller:${completionCaller}`);
 console.log(`Attester:         ${attester}`);
