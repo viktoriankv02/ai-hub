@@ -29,7 +29,19 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
-const admin = assertAddress("AI_HUB_ADMIN_ADDRESS", requireEnv("AI_HUB_ADMIN_ADDRESS"));
+const [deployer] = await ethers.getSigners();
+const admin = assertAddress("deployer", await deployer.getAddress());
+const configuredAdmin = process.env.AI_HUB_ADMIN_ADDRESS?.trim();
+if (configuredAdmin) {
+  if (!ethers.isAddress(configuredAdmin)) {
+    console.warn("AI_HUB_ADMIN_ADDRESS is invalid and will be ignored; using the deployer address as admin.");
+  } else if (ethers.getAddress(configuredAdmin) !== admin) {
+    throw new Error(
+      `AI_HUB_ADMIN_ADDRESS ${ethers.getAddress(configuredAdmin)} does not match deployer ${admin}`,
+    );
+  }
+}
+
 const existing = await loadDeploymentIfExists(target);
 if (existing) validateDeploymentRecord(existing, target, config.chainId);
 
@@ -41,6 +53,7 @@ const record: DeploymentRecord = existing ?? {
 };
 
 console.log(`Deploying AI Hub core to ${config.name} (${config.chainId})`);
+console.log(`Admin/deployer: ${admin}`);
 if (existing) console.log("Existing deployment record found; resuming/reusing verified contracts.");
 
 async function deployOrReuse(name: string, args: unknown[]): Promise<string> {
@@ -53,7 +66,7 @@ async function deployOrReuse(name: string, args: unknown[]): Promise<string> {
     const contract = await ethers.getContractAt(name, address);
     const owner = await contract.owner();
     if (ethers.getAddress(owner) !== admin) {
-      throw new Error(`${name} owner ${owner} does not match AI_HUB_ADMIN_ADDRESS ${admin}`);
+      throw new Error(`${name} owner ${owner} does not match deployer/admin ${admin}`);
     }
     console.log(`Reusing ${name}: ${address}`);
     return address;
