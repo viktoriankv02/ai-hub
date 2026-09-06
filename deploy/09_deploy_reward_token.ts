@@ -36,41 +36,59 @@ const treasury = configuredTreasury && ethers.isAddress(configuredTreasury)
   ? ethers.getAddress(configuredTreasury)
   : admin;
 
+const expectedTotalSupply = 1_000_000_000n * 10n ** 18n;
 const existing = deployment.contracts.AIHubRewardToken;
+let existingIsValid = false;
+
 if (existing) {
   const address = assertAddress("AIHubRewardToken", existing);
   const code = await ethers.provider.getCode(address);
-  if (code === "0x") throw new Error(`AIHubRewardToken is recorded at ${address}, but has no bytecode`);
 
-  const token = await ethers.getContractAt("AIHubRewardToken", address);
-  const [name, symbol, totalSupply, treasuryBalance] = await Promise.all([
-    token.name(),
-    token.symbol(),
-    token.totalSupply(),
-    token.balanceOf(treasury),
-  ]);
+  if (code !== "0x") {
+    const token = await ethers.getContractAt("AIHubRewardToken", address);
+    try {
+      const [name, symbol, totalSupply, treasuryBalance] = await Promise.all([
+        token.name(),
+        token.symbol(),
+        token.totalSupply(),
+        token.balanceOf(treasury),
+      ]);
 
-  if (name !== "AI Hub Reward Token") throw new Error(`Unexpected token name: ${name}`);
-  if (symbol !== "AIHUB") throw new Error(`Unexpected token symbol: ${symbol}`);
-  if (totalSupply !== 1_000_000_000n * 10n ** 18n) {
-    throw new Error(`Unexpected AIHUB total supply: ${totalSupply}`);
+      existingIsValid =
+        name === "AI Hub Reward Token" &&
+        symbol === "AIHUB" &&
+        totalSupply === expectedTotalSupply &&
+        treasuryBalance > 0n;
+
+      if (existingIsValid) {
+        console.log(`Reusing AIHubRewardToken: ${address}`);
+        console.log(`Treasury: ${treasury}`);
+        console.log(`Total supply: ${totalSupply.toString()}`);
+        process.env.AI_REWARD_TOKEN_ADDRESS = address;
+      } else {
+        console.log(`Ignoring stale AIHubRewardToken record at ${address}: token metadata or supply does not match.`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.log(`Ignoring stale AIHubRewardToken record at ${address}: contract is not a compatible AIHUB token (${reason}).`);
+    }
+  } else {
+    console.log(`Ignoring stale AIHubRewardToken record at ${address}: no bytecode at address.`);
   }
-  if (treasuryBalance === 0n) {
-    throw new Error(`AIHubRewardToken treasury balance is zero for ${treasury}`);
-  }
+}
 
-  console.log(`Reusing AIHubRewardToken: ${address}`);
-  console.log(`Treasury: ${treasury}`);
-  console.log(`Total supply: ${totalSupply.toString()}`);
-  process.env.AI_REWARD_TOKEN_ADDRESS = address;
-} else {
+if (!existingIsValid) {
   const token = await ethers.deployContract("AIHubRewardToken", [treasury]);
   await token.waitForDeployment();
   const address = assertAddress("AIHubRewardToken", await token.getAddress());
   const totalSupply = await token.totalSupply();
+  const treasuryBalance = await token.balanceOf(treasury);
 
-  if (totalSupply !== 1_000_000_000n * 10n ** 18n) {
+  if (totalSupply !== expectedTotalSupply) {
     throw new Error(`Unexpected deployed AIHUB total supply: ${totalSupply}`);
+  }
+  if (treasuryBalance !== expectedTotalSupply) {
+    throw new Error(`Unexpected deployed AIHUB treasury balance: ${treasuryBalance}`);
   }
 
   deployment.contracts.AIHubRewardToken = address;
