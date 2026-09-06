@@ -44,6 +44,13 @@ export default defineConfig({
       chainId: 11155111,
       accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
+    base: {
+      type: "http",
+      chainType: "op",
+      url: configVariable("BASE_RPC_URL"),
+      chainId: 8453,
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
     baseSepolia: {
       type: "http",
       chainType: "op",
