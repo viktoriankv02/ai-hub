@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { JsonRpcProvider, Wallet } from "ethers";
 import { EVM_NETWORKS } from "../deploy/config/networks";
+import { requireEnv } from "../deploy/config/env";
 import {
   assertAddress,
   loadDeployment,
@@ -14,8 +15,9 @@ if (!config) throw new Error(`Unknown AI_HUB_NETWORK: ${target}`);
 const record = await loadDeployment(target);
 validateDeploymentRecord(record, target, config.chainId);
 
+const rpcUrl = requireEnv(config.rpcEnv);
 const provider = new JsonRpcProvider(
-  process.env[config.rpcEnv],
+  rpcUrl,
   config.chainId,
   { staticNetwork: true },
 );
