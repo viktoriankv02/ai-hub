@@ -20,7 +20,7 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
-const verificationRpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || "https://base.drpc.org";
+const verificationRpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org";
 const verificationProvider = new JsonRpcProvider(verificationRpcUrl, config.chainId, { staticNetwork: true });
 
 async function getRuntimeCode(address: string): Promise<string> {
