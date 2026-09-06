@@ -78,9 +78,20 @@ if (existing) {
 }
 
 if (!existingIsValid) {
+  console.log(`Deploying AIHubRewardToken with treasury ${treasury}...`);
   const token = await ethers.deployContract("AIHubRewardToken", [treasury]);
-  await token.waitForDeployment();
   const address = assertAddress("AIHubRewardToken", await token.getAddress());
+  console.log(`Deployment submitted: ${address}`);
+
+  await token.waitForDeployment();
+
+  const code = await ethers.provider.getCode(address);
+  if (code === "0x") {
+    throw new Error(
+      `AIHubRewardToken deployment produced no runtime bytecode at ${address}. Run npm run build and retry.`,
+    );
+  }
+
   const totalSupply = await token.totalSupply();
   const treasuryBalance = await token.balanceOf(treasury);
 
