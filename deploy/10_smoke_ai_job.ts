@@ -100,7 +100,7 @@ const startReceipt = await startTx.wait();
 if (!startReceipt || startReceipt.status !== 1) throw new Error(`Agent start failed: ${startTx.hash}`);
 
 const agent = await runtime.getAgent(agentId);
-if (!agent.verified || agent.status !== 1 || agent.owner.toLowerCase() !== admin.toLowerCase()) throw new Error("Smoke agent is not verified/running or owner does not match deployer");
+if (!agent.verified || agent.status !== 1n || agent.owner.toLowerCase() !== admin.toLowerCase()) throw new Error("Smoke agent is not verified/running or owner does not match deployer");
 
 const approveTx = await token.approve(engineAddress, reward);
 const approveReceipt = await approveTx.wait();
@@ -132,7 +132,7 @@ if (!jobAfterCompletion.completed) throw new Error(`Smoke job ${jobId} is not ma
 const hasReceipt = await receiptRegistry.hasReceipt(jobId);
 if (!hasReceipt) throw new Error(`Smoke job ${jobId} has no durable receipt`);
 const receipt = await receiptRegistry.getReceipt(jobId);
-if (receipt.status !== 1) throw new Error(`Smoke job ${jobId} receipt is not in Submitted status`);
+if (receipt.status !== 1n) throw new Error(`Smoke job ${jobId} receipt is not in Submitted status`);
 if (receipt.attester.toLowerCase() !== attester.toLowerCase()) throw new Error(`Smoke receipt attester mismatch: ${receipt.attester}`);
 if (receipt.taskHash !== taskHash) throw new Error("Smoke receipt task hash mismatch");
 if (receipt.resultHash === ethers.ZeroHash) throw new Error("Smoke receipt result hash is empty");
