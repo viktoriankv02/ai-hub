@@ -41,6 +41,11 @@ PLASMA_RPC_URL=https://testnet-rpc.plasma.to
 ARC_RPC_URL=https://rpc.testnet.arc.network
 TEMPO_RPC_URL=https://rpc.moderato.tempo.xyz
 
+AI_REWARD_TOKEN_ADDRESS=...
+AI_COMPLETION_CALLER_ADDRESS=...
+AI_COMPLETION_ATTESTER_ADDRESS=...
+AI_PAYOUT_MANAGER_ADDRESS=...
+
 INK_SEPOLIA_EXPLORER_URL=https://explorer-sepolia.inkonchain.com
 PLASMA_EXPLORER_URL=https://testnet.plasmascan.to
 ARC_EXPLORER_URL=https://testnet.arcscan.app
@@ -75,7 +80,7 @@ npx hardhat run deploy/04_verify_configuration.ts --network baseSepolia
 
 ## Example: Base Mainnet
 
-Base Mainnet is deliberately gated. Do not set the gate until the deployer address, RPC endpoint, contract ownership expectations, and deployment plan have been reviewed.
+Base Mainnet is deliberately gated. Do not set the gate until the deployer address, RPC endpoint, contract ownership expectations, reward token address, and deployment plan have been reviewed.
 
 ```powershell
 $env:AI_HUB_NETWORK="base"
@@ -90,6 +95,29 @@ npx hardhat run deploy/04_verify_configuration.ts --network base
 ```
 
 This flow deploys/reuses the same nine core contracts plus `EVMChainAdapter`, for a minimum of ten contracts on Base Mainnet. The scripts persist the deployment manifest and refuse to reuse an address when there is no contract code or ownership does not match the configured admin.
+
+## Base AI job stack
+
+The AI job stack adds the execution/economic layer without using the test-only reward token on Mainnet. `deploy/08_deploy_base_ai_stack.ts` requires an existing `AI_REWARD_TOKEN_ADDRESS`, then deploys/reuses `AIAgentRuntime`, `AIAgentEngine`, `AIJobReceiptRegistry`, and `AICompletionReporter`. It wires completion reporting, attestation, receipt recording and payout authorization into the deployed stack.
+
+```powershell
+$env:AI_HUB_NETWORK="base"
+$env:AI_HUB_ADMIN_ADDRESS="0x..."
+$env:AI_HUB_ALLOW_MAINNET_DEPLOYMENT="true"
+$env:AI_REWARD_TOKEN_ADDRESS="0x..."
+$env:AI_COMPLETION_CALLER_ADDRESS="0x..."
+$env:AI_COMPLETION_ATTESTER_ADDRESS="0x..."
+$env:AI_PAYOUT_MANAGER_ADDRESS="0x..."
+
+npm run deployment:base-ai
+npm run deployment:evidence
+```
+
+The AI stack is additive: the 10-contract builder criterion is already satisfied by the core + adapter deployment count, while the AI stack increases the Mainnet contract footprint and provides a stronger product-level on-chain deployment story.
+
+## Evidence verification
+
+`npm run deployment:evidence` loads `deployments/<network>.json`, validates every address, checks that bytecode exists at every recorded address, prints the deployer when a private key is configured, and requires at least ten recorded contracts. This is intended to produce a deterministic deployment evidence report rather than relying on an informal contract count.
 
 ## Example: Ink Sepolia
 
