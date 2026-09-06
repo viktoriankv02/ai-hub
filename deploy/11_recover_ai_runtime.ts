@@ -12,7 +12,7 @@ if (target !== "base") {
 
 const config = EVM_NETWORKS[target];
 const txHash = requireEnv("AI_HUB_RECOVERY_TX");
-const rpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || "https://base.drpc.org";
+const rpcUrl = process.env.BASE_VERIFICATION_RPC_URL?.trim() || process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org";
 const provider = new JsonRpcProvider(rpcUrl, config.chainId, { staticNetwork: true });
 
 const deployment = await loadDeployment(target);
@@ -24,8 +24,15 @@ if (receipt.status !== 1) throw new Error(`Recovery transaction reverted: ${txHa
 if (!receipt.contractAddress) throw new Error(`Recovery transaction is not a contract creation: ${txHash}`);
 
 const address = assertAddress("AIAgentRuntime", receipt.contractAddress);
-const code = await provider.getCode(address);
-if (code === "0x") throw new Error(`No runtime bytecode visible at ${address} via ${rpcUrl}`);
+let code = await provider.getCode(address);
+for (let attempt = 1; attempt <= 6 && code === "0x"; attempt += 1) {
+  console.log(`Waiting for runtime bytecode at ${address} (attempt ${attempt}/6)...`);
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  code = await provider.getCode(address);
+}
+if (code === "0x") {
+  throw new Error(`No runtime bytecode visible at ${address} via ${rpcUrl}; transaction ${txHash} is confirmed but the RPC has not exposed code yet.`);
+}
 
 const runtime = {
   address,
