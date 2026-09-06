@@ -16,8 +16,24 @@ if (connectedChainId !== config.chainId) {
   );
 }
 
+const [deployer] = await ethers.getSigners();
+const deployerAddress = await deployer.getAddress();
+const configuredAdmin = process.env.AI_HUB_ADMIN_ADDRESS;
+const admin = configuredAdmin && ethers.isAddress(configuredAdmin)
+  ? ethers.getAddress(configuredAdmin)
+  : deployerAddress;
+
+if (configuredAdmin && !ethers.isAddress(configuredAdmin)) {
+  console.warn("AI_HUB_ADMIN_ADDRESS is invalid and will be ignored; using the deployer address as admin.");
+}
+
+if (admin.toLowerCase() !== deployerAddress.toLowerCase()) {
+  throw new Error(
+    `AI_HUB_ADMIN_ADDRESS ${admin} must match the connected deployer ${deployerAddress}`,
+  );
+}
+
 const deployment = await loadDeployment(target);
-const admin = requireEnv("AI_HUB_ADMIN_ADDRESS");
 
 console.log(`Configuring AI Hub core on ${config.name}`);
 
@@ -43,11 +59,17 @@ if (!(await registry.reporters(deployment.contracts.ActivityReporter))) {
 
 const operationalReporter = process.env.AI_HUB_REPORTER_ADDRESS;
 if (operationalReporter) {
-  if (!(await reporter.reporters(operationalReporter))) {
-    await (await reporter.setReporter(operationalReporter, true)).wait();
+  const reporterAddress = ethers.isAddress(operationalReporter)
+    ? ethers.getAddress(operationalReporter)
+    : undefined;
+
+  if (!reporterAddress) throw new Error("AI_HUB_REPORTER_ADDRESS is invalid");
+
+  if (!(await reporter.reporters(reporterAddress))) {
+    await (await reporter.setReporter(reporterAddress, true)).wait();
   }
-  if (!(await reporter.supportedChains(operationalReporter, config.chainId))) {
-    await (await reporter.setSupportedChain(operationalReporter, config.chainId, true)).wait();
+  if (!(await reporter.supportedChains(reporterAddress, config.chainId))) {
+    await (await reporter.setSupportedChain(reporterAddress, config.chainId, true)).wait();
   }
 }
 
@@ -59,5 +81,6 @@ if ((await chainRegistry.owner()).toLowerCase() !== admin.toLowerCase()) throw n
 if ((await vault.owner()).toLowerCase() !== admin.toLowerCase()) throw new Error("RewardVault owner mismatch");
 if ((await reporter.owner()).toLowerCase() !== admin.toLowerCase()) throw new Error("ActivityReporter owner mismatch");
 
+console.log(`Admin/deployer: ${admin}`);
 console.log("Core permissions configured.");
 console.log("AI Hub core configuration completed.");
