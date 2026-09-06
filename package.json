@@ -11,6 +11,7 @@
     "compile": "hardhat compile",
     "preflight": "tsx scripts/testnet-preflight.ts",
     "deployment:evidence": "tsx scripts/verify-deployment-evidence.ts",
+    "deployment:verify-base": "hardhat run scripts/verify-base-mainnet.ts --network base",
     "deployment:base-ai": "hardhat run deploy/08_deploy_base_ai_stack.ts",
     "drop-hunter": "tsx scripts/drop-hunter-report.ts",
     "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
