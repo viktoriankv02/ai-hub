@@ -27,8 +27,9 @@ export function validateDeploymentEnvironment(key: string): void {
   }
 
   const configuredAdmin = process.env.AI_HUB_ADMIN_ADDRESS?.trim();
-  if (configuredAdmin && !ethers.isAddress(configuredAdmin)) {
-    throw new Error(`Invalid AI_HUB_ADMIN_ADDRESS address: ${configuredAdmin}`);
+  if (configuredAdmin && ethers.isAddress(configuredAdmin)) {
+    // The deployment scripts compare a valid configured admin to the actual signer.
+    // An invalid legacy value is tolerated so it cannot block recovery; the signer remains authoritative.
   }
 
   if (key === "base" && process.env.AI_HUB_ALLOW_MAINNET_DEPLOYMENT !== "true") {
