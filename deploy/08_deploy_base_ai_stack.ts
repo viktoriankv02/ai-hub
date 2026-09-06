@@ -33,11 +33,13 @@ if (admin.toLowerCase() !== deployer.toLowerCase()) {
   throw new Error(`Admin ${admin} does not match deployer ${deployer}`);
 }
 
-const rewardTokenAddress = process.env.AI_REWARD_TOKEN_ADDRESS?.trim();
-if (!rewardTokenAddress) {
-  throw new Error("AI_REWARD_TOKEN_ADDRESS is required; deploy the production reward token first with deploy/09_deploy_reward_token.ts");
+const rewardTokenInput = process.env.AI_REWARD_TOKEN_ADDRESS?.trim() || deployment.contracts.AIHubRewardToken;
+if (!rewardTokenInput) {
+  throw new Error(
+    "AI_REWARD_TOKEN_ADDRESS is required; deploy the production reward token first with deploy/09_deploy_reward_token.ts",
+  );
 }
-const rewardToken = assertAddress("AI_REWARD_TOKEN_ADDRESS", rewardTokenAddress);
+const rewardToken = assertAddress("AI_REWARD_TOKEN_ADDRESS", rewardTokenInput);
 if ((await ethers.provider.getCode(rewardToken)) === "0x") {
   throw new Error(`AI_REWARD_TOKEN_ADDRESS has no deployed bytecode: ${rewardToken}`);
 }
@@ -64,8 +66,9 @@ async function deployOrReuse(name: string, args: readonly unknown[]): Promise<st
     const code = await ethers.provider.getCode(address);
     if (code === "0x") throw new Error(`${name} is recorded at ${address}, but no contract code exists there`);
     const contract = await ethers.getContractAt(name, address);
-    if ((await contract.owner()).toLowerCase() !== admin.toLowerCase()) {
-      throw new Error(`${name} owner ${await contract.owner()} does not match admin ${admin}`);
+    const owner = await contract.owner();
+    if (owner.toLowerCase() !== admin.toLowerCase()) {
+      throw new Error(`${name} owner ${owner} does not match admin ${admin}`);
     }
     console.log(`Reusing ${name}: ${address}`);
     return address;
