@@ -1,6 +1,7 @@
 import { network } from "hardhat";
+import { Wallet } from "ethers";
 import { EVM_NETWORKS } from "./config/networks";
-import { requireEnv } from "./config/env";
+import { requireEnv, deployerPrivateKey } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
 import { assertAddress, loadDeployment, validateDeploymentRecord } from "./utils/deployment";
 
@@ -154,7 +155,11 @@ if (!assignReceipt || assignReceipt.status !== 1) throw new Error(`Job assignmen
 
 const completedAt = new Date().toISOString();
 const signatureDigest = await reporter.completionDigest(jobId, `agent-${runnableAgentId.toString()}`, taskText, resultText, completedAt);
-const signature = ethers.Signature.from(signer.signingKey.sign(signatureDigest)).serialized;
+const signingWallet = new Wallet(deployerPrivateKey());
+if (signingWallet.address.toLowerCase() !== admin.toLowerCase()) {
+  throw new Error(`DEPLOYER_PRIVATE_KEY resolves to ${signingWallet.address}, but deployer signer is ${admin}`);
+}
+const signature = signingWallet.signingKey.sign(signatureDigest).serialized;
 const attester = admin;
 const completionId = await reporter.expectedCompletionId(jobId, `agent-${runnableAgentId.toString()}`, taskText, resultText, completedAt, attester);
 
