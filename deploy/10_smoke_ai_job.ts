@@ -56,8 +56,8 @@ const reporter = await ethers.getContractAt("AICompletionReporter", reporterAddr
 const receiptRegistry = await ethers.getContractAt("AIJobReceiptRegistry", receiptRegistryAddress);
 const activityRegistry = await ethers.getContractAt("ActivityRegistry", activityRegistryAddress);
 
-const tokenBalanceBefore = await token.balanceOf(admin);
 const reward = ethers.parseEther("1");
+const tokenBalanceBefore = await token.balanceOf(admin);
 if (tokenBalanceBefore < reward) {
   throw new Error(`Smoke test requires at least 1 AIHUB in deployer/treasury balance; found ${ethers.formatEther(tokenBalanceBefore)}`);
 }
@@ -68,6 +68,8 @@ const smokeMetadataHash = ethers.keccak256(ethers.toUtf8Bytes(`smoke:${Date.now(
 const taskText = `AI_HUB_SMOKE_TASK_V1:${Date.now()}`;
 const resultText = `AI_HUB_SMOKE_RESULT_V1:${Date.now()}`;
 const taskHash = ethers.keccak256(ethers.toUtf8Bytes(taskText));
+const agentName = "AI Hub Smoke Agent";
+const agentIdText = `agent-${(await runtime.nextAgentId()).toString()}`;
 
 if (!(await activityRegistry.supportedActivityTypes(smokeActivityType))) {
   const activityTx = await activityRegistry.setActivityType(smokeActivityType, true);
@@ -81,16 +83,19 @@ if (!(await activityRegistry.reporters(reporterAddress))) {
   if (!reporterReceipt || reporterReceipt.status !== 1) throw new Error(`Activity reporter configuration failed: ${reporterTx.hash}`);
 }
 
-const nextAgentId = await runtime.nextAgentId();
+const agentId = await runtime.nextAgentId();
 const registerTx = await runtime.registerAgent(
-  "AI Hub Smoke Agent",
+  agentName,
   "local://ai-hub/smoke",
   "ipfs://ai-hub-smoke-agent",
   "1.0.0",
 );
 const registerReceipt = await registerTx.wait();
 if (!registerReceipt || registerReceipt.status !== 1) throw new Error(`Agent registration failed: ${registerTx.hash}`);
-const agentId = nextAgentId;
+
+if (agentId.toString() !== agentIdText.slice("agent-".length)) {
+  throw new Error(`Agent ID race detected: expected ${agentIdText}, actual ${agentId.toString()}`);
+}
 
 const verifyTx = await runtime.setVerified(agentId, true);
 const verifyReceipt = await verifyTx.wait();
@@ -100,28 +105,44 @@ const startTx = await runtime.startAgent(agentId);
 const startReceipt = await startTx.wait();
 if (!startReceipt || startReceipt.status !== 1) throw new Error(`Agent start failed: ${startTx.hash}`);
 
+const agent = await runtime.getAgent(agentId);
+if (!agent.verified || agent.status !== 1 || agent.owner.toLowerCase() !== admin.toLowerCase()) {
+  throw new Error(`Smoke agent is not verified/running or owner does not match deployer`);
+}
+
 const approveTx = await token.approve(engineAddress, reward);
 const approveReceipt = await approveTx.wait();
 if (!approveReceipt || approveReceipt.status !== 1) throw new Error(`Reward token approval failed: ${approveTx.hash}`);
 
-const nextJobId = await engine.nextJobId();
+const jobId = await engine.nextJobId();
 const createTx = await engine.createJob(agentId, taskHash, reward);
 const createReceipt = await createTx.wait();
 if (!createReceipt || createReceipt.status !== 1) throw new Error(`Job creation failed: ${createTx.hash}`);
-const jobId = nextJobId;
+
+const jobCreated = await engine.jobs(jobId);
+if (jobCreated.creator.toLowerCase() !== admin.toLowerCase() || jobCreated.agentId !== agentId || jobCreated.taskHash !== taskHash || jobCreated.reward !== reward) {
+  throw new Error(`Created smoke job ${jobId} does not match expected creator, agent, task hash, or reward`);
+}
 
 const assignTx = await engine.assignJob(jobId);
 const assignReceipt = await assignTx.wait();
 if (!assignReceipt || assignReceipt.status !== 1) throw new Error(`Job assignment failed: ${assignTx.hash}`);
 
 const completedAt = new Date().toISOString();
-const signatureDigest = await reporter.completionDigest(jobId, `agent-${agentId.toString()}`, taskText, resultText, completedAt);
-const signature = await signer.signMessage(ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(signatureDigest))));
+const completionPayload =
+  "AI_HUB_JOB_COMPLETION_V1\n" +
+  `jobId=${jobId.toString()}\n` +
+  `agentId=${agentIdText}\n` +
+  `taskHash=${taskText}\n` +
+  `resultHash=${resultText}\n` +
+  `completedAt=${completedAt}`;
+const payloadHash = ethers.keccak256(ethers.toUtf8Bytes(completionPayload));
+const signature = await signer.signMessage(ethers.getBytes(payloadHash));
 
 const attester = admin;
 const completionId = await reporter.expectedCompletionId(
   jobId,
-  `agent-${agentId.toString()}`,
+  agentIdText,
   taskText,
   resultText,
   completedAt,
@@ -130,7 +151,7 @@ const completionId = await reporter.expectedCompletionId(
 
 const completionTx = await reporter.submitVerifiedCompletion(
   jobId,
-  `agent-${agentId.toString()}`,
+  agentIdText,
   taskText,
   resultText,
   completedAt,
@@ -154,6 +175,7 @@ if (receipt.status !== 1) throw new Error(`Smoke job ${jobId} receipt is not in 
 if (receipt.attester.toLowerCase() !== attester.toLowerCase()) throw new Error(`Smoke receipt attester mismatch: ${receipt.attester}`);
 if (receipt.taskHash !== taskHash) throw new Error(`Smoke receipt task hash mismatch`);
 if (receipt.resultHash === ethers.ZeroHash) throw new Error(`Smoke receipt result hash is empty`);
+if (receipt.resultHash !== ethers.keccak256(ethers.toUtf8Bytes(resultText))) throw new Error(`Smoke receipt result hash does not match signed result text`);
 
 const balanceBeforePayout = await token.balanceOf(admin);
 const payoutTx = await engine.payReward(jobId);
