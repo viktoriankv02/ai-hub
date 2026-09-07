@@ -5,7 +5,7 @@ import { requireEnv, deployerPrivateKey } from "./config/env";
 import { validateDeploymentEnvironment } from "./config/validate";
 import { assertAddress, loadDeployment, validateDeploymentRecord } from "./utils/deployment";
 
-const target = requireEnv("AI_HUB_NETWORK");
+const target = process.env.AI_HUB_NETWORK?.trim() || "base";
 validateDeploymentEnvironment(target);
 if (target !== "base") {
   throw new Error(`AI Hub AI job smoke test is Base Mainnet-only; got ${target}`);
