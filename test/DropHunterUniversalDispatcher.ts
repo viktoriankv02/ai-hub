@@ -21,7 +21,7 @@ const opportunity: ScoredOpportunity = {
   priority: 10,
   signals: { developerProgram: 5, testnetActivity: 4 },
   sources: ["github"],
-  actions: ["deploy core"],
+  actions: ["deploy core", "deploy erc20"],
   score: 84,
   confidence: 0.91,
   reasons: ["active builder target"],
@@ -30,6 +30,16 @@ const opportunity: ScoredOpportunity = {
 const action: PlannedAction = {
   id: "deploy-core",
   label: "Deploy AI Hub core contracts",
+  risk: "medium",
+  requiresWallet: true,
+  requiresGas: true,
+  automated: true,
+  completed: false,
+};
+
+const erc20Action: PlannedAction = {
+  id: "deploy-erc20",
+  label: "Deploy a minimal ERC20 test contract",
   risk: "medium",
   requiresWallet: true,
   requiresGas: true,
@@ -57,7 +67,7 @@ class RecordingUniversalAdapter implements MultiChainExecutionAdapter {
       actionId: candidate.id,
       chainKey: candidate.chainKey,
       timestamp: context.timestamp,
-      executionId: "execution-1",
+      executionId: `execution-${this.calls}`,
     };
   }
 }
@@ -105,15 +115,21 @@ describe("Drop Hunter universal dispatcher", () => {
 
   it("dispatches multiple planned actions in order", async () => {
     const adapter = new RecordingUniversalAdapter();
-    const router = new UniversalActionRouter(chains);
+    const router = new UniversalActionRouter(chains, {
+      idempotency: false,
+    });
     router.registerAdapter(adapter);
     const dispatcher = new DropHunterUniversalDispatcher(router, chains);
-    const cycle = { opportunity, actions: [action] } as DropHunterCycleResult;
+    const cycle = { opportunity, actions: [action, erc20Action] } as DropHunterCycleResult;
 
-    const results = await dispatcher.dispatchAll(cycle, [action, { ...action, id: "deploy-core-2" }]);
+    const results = await dispatcher.dispatchAll(cycle, [action, erc20Action]);
 
     expect(results).to.have.length(2);
     expect(results.map((item) => item.status)).to.deep.equal(["success", "success"]);
+    expect(results.map((item) => item.actionId)).to.deep.equal([
+      "drop-hunter:ink-builder-1:deploy-core",
+      "drop-hunter:ink-builder-1:deploy-erc20",
+    ]);
     expect(adapter.calls).to.equal(2);
   });
 });
