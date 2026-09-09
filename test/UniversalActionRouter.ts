@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { UniversalActionRouter } from "../agents/multi-chain/router.js";
+import { ChainHealthService, type ChainHealthProvider } from "../agents/multi-chain/chain-health.js";
 import type {
   ChainExecutionContext,
   MultiChainExecutionAdapter,
@@ -26,6 +27,18 @@ class RecordingAdapter implements MultiChainExecutionAdapter {
       executionId: `exec:${this.calls}`,
       note: "recorded",
     };
+  }
+}
+
+class StaticHealthProvider implements ChainHealthProvider {
+  constructor(private readonly chainId: number, private readonly blockNumber = 123) {}
+
+  getChainId(): number {
+    return this.chainId;
+  }
+
+  getBlockNumber(): number {
+    return this.blockNumber;
   }
 }
 
@@ -119,5 +132,51 @@ describe("UniversalActionRouter", function () {
 
     expect(retried.status).to.equal("success");
     expect(adapter.calls).to.equal(2);
+  });
+
+  it("allows execution when chain health is ready", async function () {
+    const health = new ChainHealthService(chains, {
+      providerFactory: (chain) => chain.key === "baseSepolia" ? new StaticHealthProvider(84532, 456) : undefined,
+    });
+    const router = new UniversalActionRouter(chains, { healthService: health });
+    const adapter = new RecordingAdapter();
+    router.registerAdapter(adapter);
+
+    const result = await router.execute(action(), { mode: "execute" });
+
+    expect(result.status).to.equal("success");
+    expect(adapter.calls).to.equal(1);
+  });
+
+  it("blocks execution when chain health reports a chain-id mismatch", async function () {
+    const health = new ChainHealthService(chains, {
+      providerFactory: (chain) => chain.key === "baseSepolia" ? new StaticHealthProvider(1) : undefined,
+    });
+    const router = new UniversalActionRouter(chains, { healthService: health });
+    const adapter = new RecordingAdapter();
+    router.registerAdapter(adapter);
+
+    const result = await router.execute(action(), { mode: "execute" });
+
+    expect(result.status).to.equal("failed");
+    expect(result.note).to.contain("chain is not ready: baseSepolia (chain-id-mismatch)");
+    expect(adapter.calls).to.equal(0);
+  });
+
+  it("blocks execution when chain health is unreachable", async function () {
+    const health = new ChainHealthService(chains, {
+      providerFactory: (chain) => chain.key === "baseSepolia"
+        ? { getChainId: async () => { throw new Error("rpc unavailable"); } }
+        : undefined,
+    });
+    const router = new UniversalActionRouter(chains, { healthService: health });
+    const adapter = new RecordingAdapter();
+    router.registerAdapter(adapter);
+
+    const result = await router.execute(action(), { mode: "execute" });
+
+    expect(result.status).to.equal("failed");
+    expect(result.note).to.equal("chain is not ready: baseSepolia (unreachable) — rpc unavailable");
+    expect(adapter.calls).to.equal(0);
   });
 });
