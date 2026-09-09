@@ -122,7 +122,9 @@ describe("Drop Hunter universal dispatcher", () => {
     const dispatcher = new DropHunterUniversalDispatcher(router, chains);
     const cycle = { opportunity, actions: [action, erc20Action] } as DropHunterCycleResult;
 
-    const results = await dispatcher.dispatchAll(cycle, [action, erc20Action]);
+    const results = await dispatcher.dispatchAll(cycle, [action, erc20Action], {
+      context: { mode: "execute", walletConnected: true, walletAddress: "0x123", gasAvailable: true },
+    });
 
     expect(results).to.have.length(2);
     expect(results.map((item) => item.status)).to.deep.equal(["success", "success"]);
