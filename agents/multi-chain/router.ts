@@ -1,4 +1,5 @@
 import type { ChainConfig } from "../../config/chains.js";
+import { ChainHealthService } from "./chain-health.js";
 import type {
   ChainExecutionContext,
   MultiChainExecutionAdapter,
@@ -7,18 +8,24 @@ import type {
   UniversalExecutionResult,
 } from "./types.js";
 
+export interface UniversalActionRouterConfig extends UniversalActionRouterOptions {
+  healthService?: ChainHealthService;
+}
+
 export class UniversalActionRouter {
   private readonly adapters = new Map<string, MultiChainExecutionAdapter>();
   private readonly completedByIdempotencyKey = new Map<string, UniversalExecutionResult>();
   private readonly now: () => Date;
   private readonly idempotencyEnabled: boolean;
+  private readonly healthService?: ChainHealthService;
 
   constructor(
     private readonly chains: readonly ChainConfig[],
-    options: UniversalActionRouterOptions = {},
+    options: UniversalActionRouterConfig = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.idempotencyEnabled = options.idempotency ?? true;
+    this.healthService = options.healthService;
   }
 
   registerAdapter(adapter: MultiChainExecutionAdapter): void {
@@ -75,6 +82,18 @@ export class UniversalActionRouter {
 
     const validation = this.validateAction(action, context, chain);
     if (validation) return validation;
+
+    if (this.healthService) {
+      const health = await this.healthService.check(chain.key);
+      if (health.status !== "ready") {
+        return this.fail(
+          action,
+          chain.key,
+          timestamp,
+          `chain is not ready: ${chain.key} (${health.status})${health.note ? ` — ${health.note}` : ""}`,
+        );
+      }
+    }
 
     const idempotencyKey = action.idempotencyKey?.trim();
     if (this.idempotencyEnabled && idempotencyKey) {
