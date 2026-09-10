@@ -77,15 +77,19 @@ describe("DropHunterProductControlPlane", () => {
     expect(summary.approvalTasks).to.equal(1);
   });
 
-  it("returns approval queue and allows explicit approval", async () => {
+  it("returns approval queue and moves explicitly approved tasks to the approved queue", async () => {
     const store = new MemoryDropHunterProductStore();
     const repository = new DropHunterProjectRepository(store);
     await repository.upsert({ opportunity, tasks });
     const control = new DropHunterProductControlPlane(store, repository, undefined, new DropTaskAutomationPolicy());
     const queue = await control.taskQueue("approval");
     expect(queue.map((item) => item.task.id)).to.deep.equal(["bridge"]);
+
     const approved = await control.approveTask(opportunity.id, "bridge");
     expect(approved.status).to.equal("ready");
+    expect((await control.taskQueue("approval")).map((item) => item.task.id)).to.deep.equal([]);
+    expect((await control.approvedTaskQueue()).map((item) => item.task.id)).to.deep.equal(["bridge"]);
+    expect((await control.dashboard()).approvalTasks).to.equal(0);
   });
 
   it("keeps manual social tasks out of agent approval execution", async () => {
