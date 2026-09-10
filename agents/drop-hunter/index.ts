@@ -32,3 +32,4 @@ export * from "./automation-policy.js";
 export * from "./product-ingestion.js";
 export * from "./product-control-plane.js";
 export * from "./agent-task-runner.js";
+export * from "./contract-template-catalog.js";
