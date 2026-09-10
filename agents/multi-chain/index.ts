@@ -13,3 +13,4 @@ export * from "./execution-store.js";
 export * from "./persistent-execution-runner.js";
 export * from "./execution-ledger.js";
 export * from "./execution-recovery.js";
+export * from "./persistent-execution-recovery.js";
