@@ -5,7 +5,7 @@ import type { ChainSelectionPreferences, ChainSelectionResult } from "./chain-se
 import { plannedActionToUniversalKind } from "./drop-hunter-action.js";
 import type { UniversalActionKind } from "./types.js";
 
-export type ExecutionPlanNodeStatus = "ready" | "blocked" | "completed";
+export type ExecutionPlanNodeStatus = "ready" | "blocked" | "completed" | "failed";
 
 export interface ExecutionPlanSelector {
   select(
