@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="AI Hub Drop Hunter — opportunity intelligence and approval-gated AI jobs." />
+  <meta name="description" content="AI Hub Drop Hunter — discover, score, automate and track crypto ecosystem opportunities." />
   <title>AI Hub — Drop Hunter</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#top" aria-label="AI Hub home"><span class="brand-mark">AI</span><span>AI Hub</span></a>
-    <div class="network"><span class="dot"></span><span id="network-label">Ink Sepolia</span></div>
+    <div class="network"><span class="dot"></span><span id="network-label">Drop Hunter</span></div>
     <div class="row-actions">
       <span id="api-status" class="badge">API connecting…</span>
       <button id="connect" class="button secondary">Connect wallet</button>
@@ -20,9 +20,9 @@
   <main id="top" class="shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">OPPORTUNITY INTELLIGENCE</p>
+        <p class="eyebrow">CRYPTO OPPORTUNITY INTELLIGENCE</p>
         <h1>Drop Hunter</h1>
-        <p class="muted">Discover campaigns, score opportunities, extract actionable tasks, and prepare them for an approval-gated AI execution queue.</p>
+        <p class="muted">Discover emerging ecosystems, score potential rewards, extract required actions, and let agents handle low-risk recurring work while wallet and spend operations remain under your control.</p>
       </div>
       <div class="hero-actions">
         <button id="scan" class="button primary">Scan opportunities</button>
@@ -30,10 +30,10 @@
     </section>
 
     <section class="stats" aria-label="Drop Hunter summary">
-      <article><span>Opportunities</span><strong id="opportunities">0</strong><small>discovered</small></article>
+      <article><span>Opportunities</span><strong id="opportunities">0</strong><small>stored projects</small></article>
       <article><span>High score</span><strong id="high-score">0</strong><small>85+ intelligence score</small></article>
-      <article><span>Tasks ready</span><strong id="tasks">0</strong><small>automatable or prepared</small></article>
-      <article><span>Awaiting approval</span><strong id="approval">0</strong><small>wallet/user boundary</small></article>
+      <article><span>Agent ready</span><strong id="tasks">0</strong><small>autonomous tasks</small></article>
+      <article><span>Awaiting approval</span><strong id="approval">0</strong><small>wallet or risk boundary</small></article>
     </section>
 
     <section class="toolbar">
@@ -44,9 +44,15 @@
       </div>
       <select id="chain" aria-label="Filter by network">
         <option>All networks</option>
-        <option>Ink Sepolia</option>
+        <option>Base</option>
         <option>Base Sepolia</option>
+        <option>Ink Sepolia</option>
         <option>Ethereum Sepolia</option>
+        <option>Arbitrum Sepolia</option>
+        <option>Optimism Sepolia</option>
+        <option>Polygon Amoy</option>
+        <option>Avalanche Fuji</option>
+        <option>BNB Testnet</option>
         <option>Plasma Testnet</option>
         <option>Arc Testnet</option>
         <option>Tempo Testnet (Moderato)</option>
@@ -57,12 +63,12 @@
 
     <section class="agent-panel">
       <div class="panel-heading">
-        <p class="eyebrow">AI AGENT</p>
-        <h2>Execution queue</h2>
-        <p class="muted">The control plane persists jobs. Wallet transactions are never silently signed and remain behind explicit approval.</p>
+        <p class="eyebrow">AI AGENT CONTROL</p>
+        <h2>Task queue</h2>
+        <p class="muted">Autonomous tasks can be scheduled by the agent. Wallet transactions, gas spending and higher-risk actions remain approval-gated by default.</p>
       </div>
       <div class="panel-actions">
-        <button id="plan" class="button primary">Prepare eligible tasks</button>
+        <button id="plan" class="button primary">Refresh task queue</button>
         <button id="refresh-jobs" class="button secondary">Refresh</button>
       </div>
       <div id="queue" class="queue"></div>
@@ -72,7 +78,7 @@
   <dialog id="task-dialog" class="dialog">
     <div class="dialog-header">
       <div>
-        <p class="eyebrow">OPPORTUNITY DETAILS</p>
+        <p class="eyebrow">PROJECT DETAILS</p>
         <h2 id="dialog-title">Tasks</h2>
       </div>
       <button id="dialog-close" class="icon-button" aria-label="Close">×</button>
