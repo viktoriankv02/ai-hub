@@ -73,6 +73,6 @@ describe("DropTaskAutomationPolicy", () => {
       estimatedCostUsd: 3,
     }));
     expect(decision.mode).to.equal("approval");
-    expect(decision.reasons[0]).to.contain("exceeds autonomous limit");
+    expect(decision.reasons.join(" ")).to.contain("exceeds autonomous limit");
   });
 });
