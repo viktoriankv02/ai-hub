@@ -1,17 +1,21 @@
 export type DropTaskKind =
   | "social"
   | "community"
+  | "check-in"
+  | "faucet"
   | "bridge"
   | "swap"
   | "liquidity"
   | "stake"
   | "deploy"
   | "mint"
+  | "contract-call"
   | "quest"
   | "verify"
   | "other";
 
 export type DropTaskRisk = "low" | "medium" | "high";
+export type DropTaskRecurrence = "once" | "daily" | "weekly" | "monthly";
 
 export interface DropTask {
   id: string;
@@ -27,6 +31,8 @@ export interface DropTask {
   estimatedCostUsd?: number;
   rewardHint?: string;
   deadline?: string;
+  recurrence?: DropTaskRecurrence;
+  recurrenceInterval?: number;
   prerequisites: string[];
   evidenceRequired: string[];
   source: string;
