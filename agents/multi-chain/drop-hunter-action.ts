@@ -29,7 +29,7 @@ function resolveChain(opportunity: ScoredOpportunity, chains: readonly ChainConf
   return chain;
 }
 
-function actionKind(action: PlannedAction): UniversalActionKind {
+export function plannedActionToUniversalKind(action: PlannedAction): UniversalActionKind {
   switch (action.id) {
     case "deploy-core":
     case "deploy-evm-adapter":
@@ -60,7 +60,7 @@ export function toUniversalDropHunterAction(
 
   return {
     id: `drop-hunter:${opportunity.id}:${action.id}`,
-    kind: actionKind(action),
+    kind: plannedActionToUniversalKind(action),
     chainKey: chain.key,
     payload: {
       opportunityId: opportunity.id,
