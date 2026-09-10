@@ -20,6 +20,7 @@ export interface ExecutionPlanNode {
   actionKind: UniversalActionKind;
   dependencyIds: string[];
   chainKey?: string;
+  idempotencyKey: string;
   status: ExecutionPlanNodeStatus;
   blockers: string[];
 }
@@ -59,6 +60,10 @@ function resolveOpportunityChain(
   return chains.find((chain) => chain.chainId === opportunity.chainId)?.key;
 }
 
+function idempotencyKeyFor(opportunityId: string, actionId: string): string {
+  return `drop-hunter:${opportunityId}:${actionId}`;
+}
+
 export class MultiChainExecutionPlanner {
   private readonly now: () => Date;
 
@@ -82,6 +87,7 @@ export class MultiChainExecutionPlanner {
       const actionKind = plannedActionToUniversalKind(action);
       const blockers: string[] = [];
       let chainKey = fixedChainKey;
+      const idempotencyKey = idempotencyKeyFor(opportunity.id, action.id);
 
       if (action.completed) {
         nodes.push({
@@ -90,6 +96,7 @@ export class MultiChainExecutionPlanner {
           actionKind,
           dependencyIds,
           chainKey,
+          idempotencyKey,
           status: "completed",
           blockers,
         });
@@ -125,6 +132,7 @@ export class MultiChainExecutionPlanner {
         actionKind,
         dependencyIds,
         chainKey,
+        idempotencyKey,
         status: blockers.length === 0 ? "ready" : "blocked",
         blockers,
       });

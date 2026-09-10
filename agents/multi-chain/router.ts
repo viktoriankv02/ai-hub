@@ -1,6 +1,7 @@
 import type { ChainConfig } from "../../config/chains.js";
 import { ChainCapabilityRegistry } from "./chain-capabilities.js";
 import { ChainHealthService } from "./chain-health.js";
+import { DurableExecutionLedger } from "./execution-ledger.js";
 import type {
   ChainExecutionContext,
   MultiChainExecutionAdapter,
@@ -12,6 +13,7 @@ import type {
 export interface UniversalActionRouterConfig extends UniversalActionRouterOptions {
   healthService?: ChainHealthService;
   capabilityRegistry?: ChainCapabilityRegistry;
+  executionLedger?: DurableExecutionLedger;
 }
 
 export class UniversalActionRouter {
@@ -21,6 +23,7 @@ export class UniversalActionRouter {
   private readonly idempotencyEnabled: boolean;
   private readonly healthService?: ChainHealthService;
   private readonly capabilityRegistry?: ChainCapabilityRegistry;
+  private readonly executionLedger?: DurableExecutionLedger;
 
   constructor(
     private readonly chains: readonly ChainConfig[],
@@ -30,6 +33,7 @@ export class UniversalActionRouter {
     this.idempotencyEnabled = options.idempotency ?? true;
     this.healthService = options.healthService;
     this.capabilityRegistry = options.capabilityRegistry;
+    this.executionLedger = options.executionLedger;
   }
 
   registerAdapter(adapter: MultiChainExecutionAdapter): void {
@@ -112,7 +116,7 @@ export class UniversalActionRouter {
     }
 
     const idempotencyKey = action.idempotencyKey?.trim();
-    if (this.idempotencyEnabled && idempotencyKey) {
+    if (this.idempotencyEnabled && idempotencyKey && !this.executionLedger) {
       const previous = this.completedByIdempotencyKey.get(idempotencyKey);
       if (previous) return { ...previous, status: "skipped", note: "idempotent action already completed" };
     }
@@ -144,13 +148,49 @@ export class UniversalActionRouter {
       };
     }
 
-    const result = await adapter.execute(action, context);
-    if (idempotencyKey && result.status === "success") this.completedByIdempotencyKey.set(idempotencyKey, result);
-    return result;
+    if (this.idempotencyEnabled && idempotencyKey && this.executionLedger) {
+      const reservation = await this.executionLedger.reserve(idempotencyKey, action.id, action.chainKey);
+      if (!reservation.reserved) {
+        return {
+          status: "skipped",
+          actionId: action.id,
+          chainKey: action.chainKey,
+          timestamp,
+          txHash: reservation.entry.txHash,
+          executionId: reservation.entry.executionId,
+          note: `idempotent action not executed: ${reservation.reason}`,
+          data: {
+            idempotencyKey,
+            ledgerStatus: reservation.entry.status,
+            attempts: reservation.entry.attempts,
+          },
+        };
+      }
+    }
+
+    try {
+      const result = await adapter.execute(action, context);
+      if (idempotencyKey && this.idempotencyEnabled) {
+        if (this.executionLedger) await this.executionLedger.recordResult(idempotencyKey, result);
+        else if (result.status === "success") this.completedByIdempotencyKey.set(idempotencyKey, result);
+      }
+      return result;
+    } catch (error) {
+      const note = error instanceof Error ? error.message : String(error);
+      if (idempotencyKey && this.idempotencyEnabled && this.executionLedger) {
+        await this.executionLedger.markFailed(idempotencyKey, timestamp, note);
+      }
+      return this.fail(action, action.chainKey, timestamp, note);
+    }
   }
 
   clearIdempotencyKey(idempotencyKey: string): boolean {
     return this.completedByIdempotencyKey.delete(idempotencyKey);
+  }
+
+  async clearDurableIdempotencyKey(idempotencyKey: string): Promise<boolean> {
+    if (!this.executionLedger) return false;
+    return this.executionLedger.delete(idempotencyKey);
   }
 
   clearIdempotency(): void {

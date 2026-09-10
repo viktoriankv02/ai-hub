@@ -26,6 +26,7 @@ function node(
     actionKind: "custom",
     dependencyIds,
     chainKey: "baseSepolia",
+    idempotencyKey: `drop-hunter:opportunity-1:${id}`,
     status,
     blockers: status === "blocked" ? dependencyIds.map((dependencyId) => `dependency:${dependencyId}`) : [],
   };
