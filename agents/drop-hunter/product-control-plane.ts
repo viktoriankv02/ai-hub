@@ -59,7 +59,7 @@ export class DropHunterProductControlPlane {
   async dashboard(highScoreThreshold = 85): Promise<DropHunterDashboardSummary> {
     const projects = await this.store.listProjects();
     const tasks = projects.flatMap((project) => project.tasks.map((task) => ({ project, task })));
-    const decisions = tasks.map(({ task }) => this.policy.decide(task));
+    const decisions = tasks.map(({ task }) => ({ task, decision: this.policy.decide(task) }));
 
     return {
       projects: projects.length,
@@ -67,8 +67,8 @@ export class DropHunterProductControlPlane {
       highScoreProjects: projects.filter((project) => (project.intelligence?.total ?? project.opportunity.score) >= highScoreThreshold).length,
       tasks: tasks.length,
       readyTasks: tasks.filter(({ task }) => task.status === "ready" || task.status === "pending").length,
-      autonomousTasks: decisions.filter((decision) => decision.mode === "autonomous").length,
-      approvalTasks: decisions.filter((decision) => decision.mode === "approval").length,
+      autonomousTasks: decisions.filter(({ task, decision }) => decision.mode === "autonomous" && task.status !== "completed" && task.status !== "skipped").length,
+      approvalTasks: decisions.filter(({ task, decision }) => decision.mode === "approval" && task.status !== "ready" && task.status !== "completed" && task.status !== "skipped").length,
       completedTasks: tasks.filter(({ task }) => task.status === "completed").length,
       failedTasks: tasks.filter(({ task }) => task.status === "failed").length,
     };
@@ -83,6 +83,28 @@ export class DropHunterProductControlPlane {
         if (task.status === "completed" || task.status === "skipped") continue;
         const automation = this.policy.decide(task);
         if (mode && automation.mode !== mode) continue;
+        if (mode === "approval" && task.status === "ready") continue;
+        queue.push({
+          projectId: project.id,
+          projectName: project.opportunity.name,
+          projectScore: project.intelligence?.total ?? project.opportunity.score,
+          task,
+          automation,
+        });
+      }
+    }
+    return queue;
+  }
+
+  async approvedTaskQueue(): Promise<DropHunterTaskView[]> {
+    const projects = await this.listProjects();
+    const queue: DropHunterTaskView[] = [];
+    for (const project of projects) {
+      if (project.status === "paused" || project.status === "archived" || project.status === "completed") continue;
+      for (const task of project.tasks) {
+        if (task.status !== "ready") continue;
+        const automation = this.policy.decide(task);
+        if (automation.mode !== "approval") continue;
         queue.push({
           projectId: project.id,
           projectName: project.opportunity.name,
