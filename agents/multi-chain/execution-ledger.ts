@@ -227,6 +227,10 @@ export class DurableExecutionLedger {
     return this.store.list();
   }
 
+  async delete(key: string): Promise<boolean> {
+    return this.store.delete(key);
+  }
+
   private async require(key: string): Promise<ExecutionLedgerEntry> {
     const entry = await this.store.get(key);
     if (!entry) throw new Error(`execution ledger entry not found: ${key}`);
