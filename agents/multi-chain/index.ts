@@ -11,3 +11,5 @@ export * from "./execution-planner.js";
 export * from "./execution-plan-runner.js";
 export * from "./execution-store.js";
 export * from "./persistent-execution-runner.js";
+export * from "./execution-ledger.js";
+export * from "./execution-recovery.js";
