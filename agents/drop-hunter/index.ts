@@ -30,3 +30,4 @@ export * from "./wallet-execution.js";
 export * from "./product-store.js";
 export * from "./automation-policy.js";
 export * from "./product-ingestion.js";
+export * from "./product-control-plane.js";
