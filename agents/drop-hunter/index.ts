@@ -27,3 +27,5 @@ export * from "./drop-hunter-agent.js";
 export * from "./reward-analyzer.js";
 export * from "./transaction-preview.js";
 export * from "./wallet-execution.js";
+export * from "./product-store.js";
+export * from "./automation-policy.js";
