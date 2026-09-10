@@ -6,3 +6,4 @@ export * from "./chain-health.js";
 export * from "./evm-chain-health-provider.js";
 export * from "./chain-capabilities.js";
 export * from "./runtime-registry.js";
+export * from "./chain-selector.js";
