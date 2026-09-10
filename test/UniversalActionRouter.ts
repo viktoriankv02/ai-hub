@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { ChainCapabilityRegistry } from "../agents/multi-chain/chain-capabilities.js";
 import { UniversalActionRouter } from "../agents/multi-chain/router.js";
 import { ChainHealthService, type ChainHealthProvider } from "../agents/multi-chain/chain-health.js";
 import type {
@@ -178,5 +179,57 @@ describe("UniversalActionRouter", function () {
     expect(result.status).to.equal("failed");
     expect(result.note).to.equal("chain is not ready: baseSepolia (unreachable) — rpc unavailable");
     expect(adapter.calls).to.equal(0);
+  });
+
+  it("blocks an undeclared capability before health or adapter execution", async function () {
+    let healthCalls = 0;
+    const capabilities = new ChainCapabilityRegistry(chains);
+    capabilities.register({
+      chainKey: "baseSepolia",
+      actionKinds: new Set(["custom"]),
+    });
+    const health = new ChainHealthService(chains, {
+      providerFactory: () => ({
+        getChainId: () => {
+          healthCalls += 1;
+          return 84532;
+        },
+      }),
+    });
+    const router = new UniversalActionRouter(chains, {
+      capabilityRegistry: capabilities,
+      healthService: health,
+    });
+    const adapter = new RecordingAdapter();
+    router.registerAdapter(adapter);
+
+    const result = await router.execute(action({ kind: "swap" }), { mode: "execute" });
+
+    expect(result.status).to.equal("failed");
+    expect(result.note).to.equal("action swap is not enabled for baseSepolia");
+    expect(healthCalls).to.equal(0);
+    expect(adapter.calls).to.equal(0);
+  });
+
+  it("passes an explicitly enabled capability into health and execution", async function () {
+    const capabilities = new ChainCapabilityRegistry(chains);
+    capabilities.register({
+      chainKey: "baseSepolia",
+      actionKinds: new Set(["custom"]),
+    });
+    const health = new ChainHealthService(chains, {
+      providerFactory: () => new StaticHealthProvider(84532),
+    });
+    const router = new UniversalActionRouter(chains, {
+      capabilityRegistry: capabilities,
+      healthService: health,
+    });
+    const adapter = new RecordingAdapter();
+    router.registerAdapter(adapter);
+
+    const result = await router.execute(action(), { mode: "execute" });
+
+    expect(result.status).to.equal("success");
+    expect(adapter.calls).to.equal(1);
   });
 });
