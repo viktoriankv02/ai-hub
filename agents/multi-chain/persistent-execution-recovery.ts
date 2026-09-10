@@ -48,12 +48,7 @@ export class PersistentExecutionRecoveryService {
         continue;
       }
 
-      const key = node.action.idempotencyKey?.trim();
-      if (!key) {
-        nodeResults.push({ nodeId: node.id, action: "unchanged", note: "node has no idempotency key" });
-        continue;
-      }
-
+      const key = node.idempotencyKey.trim();
       const entry = await this.ledger.get(key);
       if (!entry) {
         nodeResults.push({ nodeId: node.id, idempotencyKey: key, action: "unchanged", note: "no durable execution entry" });
