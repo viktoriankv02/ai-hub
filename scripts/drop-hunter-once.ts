@@ -1,6 +1,10 @@
 import {
-  DropHunterAgent,
+  DropHunterProductIngestionService,
+  DropHunterProjectRepository,
+  DropTaskAutomationPolicy,
   GitHubRepositoryOpportunitySource,
+  JsonFileDropHunterProductStore,
+  OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
 } from "../agents/drop-hunter/index.js";
@@ -11,6 +15,10 @@ const queries = (process.env.DROP_HUNTER_GITHUB_QUERIES ?? "incentivized testnet
   .filter(Boolean);
 const maxResults = Number(process.env.DROP_HUNTER_GITHUB_MAX_RESULTS ?? 10);
 const minimumScore = Number(process.env.DROP_HUNTER_MIN_SCORE ?? 0);
+const productStorePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
+const maxAutonomousCostUsd = Number(process.env.DROP_HUNTER_MAX_AUTONOMOUS_COST_USD ?? 0);
+const allowAutonomousGas = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_GAS === "true";
+const allowAutonomousWallet = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_WALLET === "true";
 
 if (queries.length === 0) throw new Error("DROP_HUNTER_GITHUB_QUERIES must contain at least one query");
 if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {
@@ -19,42 +27,58 @@ if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {
 if (!Number.isFinite(minimumScore) || minimumScore < 0 || minimumScore > 100) {
   throw new Error("DROP_HUNTER_MIN_SCORE must be between 0 and 100");
 }
+if (!Number.isFinite(maxAutonomousCostUsd) || maxAutonomousCostUsd < 0) {
+  throw new Error("DROP_HUNTER_MAX_AUTONOMOUS_COST_USD must be a non-negative number");
+}
 
-const hunter = new DropHunterAgent(
-  [
-    new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
-    new GitHubRepositoryOpportunitySource({
-      queries,
-      maxResults,
-      token: process.env.GITHUB_TOKEN,
-    }),
-  ],
-  { minimumScore },
-);
+const discovery = new OpportunityDiscoveryRegistry([
+  new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
+  new GitHubRepositoryOpportunitySource({
+    queries,
+    maxResults,
+    token: process.env.GITHUB_TOKEN,
+  }),
+]);
 
-const report = await hunter.scan();
+const store = new JsonFileDropHunterProductStore(productStorePath);
+const repository = new DropHunterProjectRepository(store);
+const automationPolicy = new DropTaskAutomationPolicy({
+  maxAutonomousCostUsd,
+  allowAutonomousGas,
+  allowAutonomousWalletActions: allowAutonomousWallet,
+});
+const ingestion = new DropHunterProductIngestionService(discovery, repository, automationPolicy);
+const report = await ingestion.ingest();
+const visible = report.projects.filter((item) => item.intelligence.score.total >= minimumScore);
 
-console.log("AI Hub Drop Hunter — live scan");
-console.log(`Generated: ${report.generatedAt}`);
-console.log(`Opportunities: ${report.results.length}`);
-console.log(`Successful sources: ${report.successfulSources.join(", ") || "none"}`);
-if (report.failedSources.length > 0) {
-  console.log(`Failed sources: ${report.failedSources.map((source) => `${source.sourceId}: ${source.error}`).join("; ")}`);
+console.log("AI Hub Drop Hunter — product scan");
+console.log(`Generated: ${report.discoveredAt}`);
+console.log(`Discovered: ${report.discovery.opportunities.length}`);
+console.log(`Shown (score >= ${minimumScore}): ${visible.length}`);
+console.log(`Stored at: ${productStorePath}`);
+console.log(`Successful sources: ${report.discovery.successfulSources.join(", ") || "none"}`);
+if (report.discovery.failedSources.length > 0) {
+  console.log(`Failed sources: ${report.discovery.failedSources.map((source) => `${source.sourceId}: ${source.error}`).join("; ")}`);
 }
 console.log("");
 
-for (const [index, result] of report.results.entries()) {
+for (const [index, item] of visible.entries()) {
+  const { opportunity } = item.intelligence;
   console.log(
-    `${index + 1}. ${result.opportunity.name} | score=${result.score.total} | confidence=${result.score.confidence} | priority=${result.opportunity.priority}`,
+    `${index + 1}. ${opportunity.name} | score=${item.intelligence.score.total} | confidence=${item.intelligence.score.confidence} | priority=${opportunity.priority}`,
   );
-  console.log(`   stage: ${result.opportunity.stage} | vm: ${result.opportunity.vm}`);
-  console.log(`   tasks: ${result.tasks.length}`);
-  if (result.tasks.length > 0) {
-    for (const task of result.tasks) {
-      console.log(`   - ${task.kind}: ${task.title} | risk=${task.risk} | approval=${task.requiresUserApproval}`);
-    }
+  console.log(`   stage: ${opportunity.stage} | vm: ${opportunity.vm} | projectStatus=${item.project.status}`);
+  console.log(`   tasks: ${item.tasks.length}`);
+  for (const task of item.tasks) {
+    console.log(`   - ${task.title} | automation=${task.automation.mode} | ${task.automation.reasons.join("; ")}`);
   }
-  if (result.score.reasons.length > 0) {
-    console.log(`   reasons: ${result.score.reasons.join("; ")}`);
+  if (item.intelligence.score.reasons.length > 0) {
+    console.log(`   reasons: ${item.intelligence.score.reasons.join("; ")}`);
   }
+}
+
+if (report.warnings.length > 0) {
+  console.log("");
+  console.log("Warnings:");
+  for (const warning of report.warnings) console.log(`- ${warning}`);
 }
