@@ -69,6 +69,10 @@ function normalizeStatus(
   return "unknown";
 }
 
+function normalizeAddress(address: string): string {
+  return address.trim().toLowerCase();
+}
+
 /**
  * Real EVM transaction adapter for Drop Hunter.
  *
@@ -134,6 +138,18 @@ export class EvmExecutionAdapter implements ExecutionAdapter {
         chainId: context.chainId,
         note: "wallet connection is required",
       };
+    }
+
+    if (action.requiresWallet && context.walletAddress) {
+      const signerAddress = normalizeAddress(await this.signer.getAddress());
+      if (signerAddress !== normalizeAddress(context.walletAddress)) {
+        return {
+          status: "failed",
+          timestamp: context.timestamp,
+          chainId: context.chainId,
+          note: `connected wallet does not match signer address: ${context.walletAddress}`,
+        };
+      }
     }
 
     if (action.requiresGas && !context.gasAvailable) {

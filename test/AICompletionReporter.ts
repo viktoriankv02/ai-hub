@@ -135,10 +135,8 @@ describe("AICompletionReporter", function () {
   });
 
   it("rejects completion when the job was not assigned", async function () {
-    const { owner, developer, token, engine, completionReporter, runtime } = await deploySystem();
+    const { developer, token, engine, completionReporter, runtime } = await deploySystem();
     const reward = ethers.parseEther("1");
-
-    await (await engine.connect(owner).cancelJob(1)).wait();
 
     await (await token.transfer(await developer.getAddress(), reward)).wait();
     await (await token.connect(developer).approve(await engine.getAddress(), reward)).wait();

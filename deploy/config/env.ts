@@ -11,9 +11,12 @@ export function optionalEnv(name: string): string | undefined {
 }
 
 export function deployerPrivateKey(): string {
-  return requireEnv("DEPLOYER_PRIVATE_KEY");
+  const key = requireEnv("DEPLOYER_PRIVATE_KEY").trim();
+  if (/^[0-9a-fA-F]{64}$/.test(key)) return `0x${key}`;
+  if (/^0x[0-9a-fA-F]{64}$/.test(key)) return key;
+  throw new Error("DEPLOYER_PRIVATE_KEY must be 64 hex characters, with or without the 0x prefix");
 }
 
-export function adminAddress(): string {
-  return requireEnv("AI_HUB_ADMIN_ADDRESS");
+export function adminAddress(): string | undefined {
+  return optionalEnv("AI_HUB_ADMIN_ADDRESS");
 }

@@ -52,4 +52,15 @@ export class ExecutionGate {
     if (approvalRequired && !request.approved) return { allowed: false, requiresConfirmation: true, reason: "explicit user approval is required" };
     return { allowed: true, requiresConfirmation: false, reason: "execution satisfies the configured policy" };
   }
+
+  /**
+   * Re-evaluate a previously approved action against the current wallet/gas
+   * state. Approval is intentionally supplied again so a stale decision can
+   * never authorize execution after the execution context changes.
+   */
+  revalidate(
+    request: Omit<ExecutionGateRequest, "approved"> & { approved?: boolean },
+  ): ExecutionGateDecision {
+    return this.evaluate(request);
+  }
 }

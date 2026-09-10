@@ -11,6 +11,8 @@ import {
 import { JsonCompletionPublicationStore, type CompletionPublicationStore } from "./completion-store.js";
 import type { AIJobRecord } from "./types.js";
 
+export type { CompletionAttestation, CompletionAttestationPayload, AttestationSigner } from "./completion-attestation.js";
+
 export interface CompletionAttestationSink {
   submit(attestation: CompletionAttestation): Promise<string>;
 }
@@ -96,9 +98,6 @@ export class AIJobCompletionBridge {
       reused: false,
     };
 
-    // Persist the exact attestation that crossed the trust boundary. This
-    // makes restart/recovery deterministic and avoids re-signing with a
-    // different key after a process restart.
     this.publicationStore?.set({
       jobId: job.id,
       transactionId,

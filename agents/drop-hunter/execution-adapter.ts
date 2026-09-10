@@ -7,6 +7,7 @@ export interface ExecutionAdapterContext {
   timestamp: string;
   chainId?: number;
   walletConnected?: boolean;
+  walletAddress?: string;
   gasAvailable?: boolean;
 }
 
