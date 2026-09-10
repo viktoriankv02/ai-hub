@@ -1,4 +1,5 @@
 import type { ChainConfig } from "../../config/chains.js";
+import { ChainCapabilityRegistry } from "./chain-capabilities.js";
 import { ChainHealthService } from "./chain-health.js";
 import type {
   ChainExecutionContext,
@@ -10,6 +11,7 @@ import type {
 
 export interface UniversalActionRouterConfig extends UniversalActionRouterOptions {
   healthService?: ChainHealthService;
+  capabilityRegistry?: ChainCapabilityRegistry;
 }
 
 export class UniversalActionRouter {
@@ -18,6 +20,7 @@ export class UniversalActionRouter {
   private readonly now: () => Date;
   private readonly idempotencyEnabled: boolean;
   private readonly healthService?: ChainHealthService;
+  private readonly capabilityRegistry?: ChainCapabilityRegistry;
 
   constructor(
     private readonly chains: readonly ChainConfig[],
@@ -26,6 +29,7 @@ export class UniversalActionRouter {
     this.now = options.now ?? (() => new Date());
     this.idempotencyEnabled = options.idempotency ?? true;
     this.healthService = options.healthService;
+    this.capabilityRegistry = options.capabilityRegistry;
   }
 
   registerAdapter(adapter: MultiChainExecutionAdapter): void {
@@ -82,6 +86,18 @@ export class UniversalActionRouter {
 
     const validation = this.validateAction(action, context, chain);
     if (validation) return validation;
+
+    if (this.capabilityRegistry) {
+      const capability = this.capabilityRegistry.check(action);
+      if (!capability.supported) {
+        return this.fail(
+          action,
+          chain.key,
+          timestamp,
+          capability.note ?? `action ${action.kind} is not supported on ${chain.key}`,
+        );
+      }
+    }
 
     if (this.healthService) {
       const health = await this.healthService.check(chain.key);
