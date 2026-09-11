@@ -1,5 +1,6 @@
 const API = globalThis.AI_HUB_REWARD_API ?? "http://127.0.0.1:8788";
 const $ = (selector) => document.querySelector(selector);
+let syncing = false;
 
 async function api(path, options = {}) {
   const response = await fetch(`${API}${path}`, {
@@ -16,10 +17,19 @@ async function refreshRewards() {
   const summaryRoot = $("#reward-summary");
   if (!root || !summaryRoot) return;
   try {
+    if (!syncing) {
+      syncing = true;
+      try {
+        await api("/rewards/sync-evidence", { method: "POST", body: "{}" });
+      } finally {
+        syncing = false;
+      }
+    }
     const [list, summary] = await Promise.all([api("/rewards"), api("/rewards/summary")]);
     renderSummary(summary.summary ?? {});
     renderRewards(list.rewards ?? []);
   } catch (error) {
+    syncing = false;
     summaryRoot.innerHTML = `<div class="queue-offline"><strong>Rewards API offline</strong><span>${escapeHtml(error.message)}</span></div>`;
     root.innerHTML = "";
   }
