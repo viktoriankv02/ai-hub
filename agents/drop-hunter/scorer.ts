@@ -65,7 +65,7 @@ export function scoreOpportunity(opportunity: ProjectOpportunity): ScoredOpportu
 export function rankOpportunities(opportunities: ProjectOpportunity[]): ScoredOpportunity[] {
   return opportunities
     .map(scoreOpportunity)
-    .sort((a, b) => b.score - a.score || b.confidence - a.confidence || b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort((a, b) => b.score - a.score || b.priority - a.priority || b.confidence - a.confidence || a.name.localeCompare(b.name));
 }
 
 export function createReport(opportunities: ProjectOpportunity[]): DropHunterReport {
