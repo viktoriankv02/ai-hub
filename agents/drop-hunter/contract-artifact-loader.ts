@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { InterfaceAbi } from "ethers";
 import type { ContractDeploymentPlan } from "./contract-deployment-engine.js";
 
 export interface ContractBuildArtifact {
   contractName: string;
-  abi: readonly unknown[];
+  abi: InterfaceAbi;
   bytecode: string;
 }
 
@@ -27,6 +28,6 @@ export class HardhatJsonArtifactLoader implements ContractArtifactLoader {
     if (typeof parsed.bytecode !== "string" || !/^0x[0-9a-fA-F]+$/.test(parsed.bytecode) || parsed.bytecode === "0x") {
       throw new Error(`artifact bytecode is invalid for ${plan.contractName}`);
     }
-    return { contractName: plan.contractName, abi: parsed.abi, bytecode: parsed.bytecode };
+    return { contractName: plan.contractName, abi: parsed.abi as InterfaceAbi, bytecode: parsed.bytecode };
   }
 }
