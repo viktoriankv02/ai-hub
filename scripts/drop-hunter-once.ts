@@ -7,6 +7,7 @@ import {
   OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
+  type DiscoverySource,
 } from "../agents/drop-hunter/index.js";
 import { OfficialPageOpportunitySource, parseOfficialPagesJson } from "../agents/drop-hunter/official-page-opportunity-source.js";
 
@@ -27,7 +28,7 @@ if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) throw n
 if (!Number.isFinite(minimumScore) || minimumScore < 0 || minimumScore > 100) throw new Error("DROP_HUNTER_MIN_SCORE must be between 0 and 100");
 if (!Number.isFinite(maxAutonomousCostUsd) || maxAutonomousCostUsd < 0) throw new Error("DROP_HUNTER_MAX_AUTONOMOUS_COST_USD must be a non-negative number");
 
-const sources = [
+const sources: DiscoverySource[] = [
   new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
   new GitHubRepositoryOpportunitySource({ queries, maxResults, token: process.env.GITHUB_TOKEN }),
 ];
