@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
+  DropHunterRewardEvidenceBridge,
   DropHunterRewardService,
+  JsonFileDropHunterEvidenceStore,
   JsonFileDropHunterRewardStore,
   type DropHunterRewardSource,
   type DropHunterRewardStatus,
@@ -8,6 +10,7 @@ import {
 
 const port = Number(process.env.DROP_HUNTER_REWARD_API_PORT ?? 8788);
 const storePath = process.env.DROP_HUNTER_REWARD_PATH ?? "data/drop-hunter-rewards.json";
+const evidencePath = process.env.DROP_HUNTER_EVIDENCE_PATH ?? "data/drop-hunter-evidence.json";
 const statuses = new Set<DropHunterRewardStatus>(["detected", "claimable", "claimed", "confirmed", "dismissed"]);
 const sources = new Set<DropHunterRewardSource>(["onchain", "campaign", "manual", "unknown"]);
 
@@ -15,6 +18,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DROP_H
 
 const store = new JsonFileDropHunterRewardStore(storePath);
 const rewards = new DropHunterRewardService(store);
+const evidence = new JsonFileDropHunterEvidenceStore(evidencePath);
+const rewardEvidence = new DropHunterRewardEvidenceBridge(rewards);
 
 createServer(async (req, res) => {
   setCors(res);
@@ -24,7 +29,7 @@ createServer(async (req, res) => {
     const path = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
     if (req.method === "GET" && path.length === 1 && path[0] === "health") {
-      return send(res, 200, { ok: true, service: "drop-hunter-rewards", storePath });
+      return send(res, 200, { ok: true, service: "drop-hunter-rewards", storePath, evidencePath });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "rewards") {
       const projectId = url.searchParams.get("projectId") ?? undefined;
@@ -39,6 +44,11 @@ createServer(async (req, res) => {
       const reward = await rewards.get(path[1]);
       if (!reward) return send(res, 404, { error: `drop hunter reward not found: ${path[1]}` });
       return send(res, 200, { reward });
+    }
+    if (req.method === "POST" && path.length === 2 && path[0] === "rewards" && path[1] === "sync-evidence") {
+      const records = await evidence.list();
+      const synced = await rewardEvidence.ingestMany(records);
+      return send(res, 200, { scanned: records.length, synced: synced.length, rewards: synced });
     }
     if (req.method === "POST" && path.length === 1 && path[0] === "rewards") {
       const body = await readJson(req);
