@@ -85,6 +85,15 @@
 
     <section class="agent-panel">
       <div class="panel-heading">
+        <p class="eyebrow">BUILDER EXECUTION</p>
+        <h2>Deployment center</h2>
+        <p class="muted">Only explicitly approved deploy or mint tasks appear here. The server prepares an unsigned payload; your browser wallet performs the final signature and broadcast.</p>
+      </div>
+      <div id="deployment-center" class="queue"><div class="empty compact-empty"><span>Loading deployment tasks…</span></div></div>
+    </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
         <p class="eyebrow">SYSTEM READINESS</p>
         <h2>Networks & discovery</h2>
         <p class="muted">RPC availability is shown only as configured/missing. Endpoint values and secrets are never exposed to the browser.</p>
@@ -116,8 +125,24 @@
     <div id="dialog-tasks" class="dialog-tasks"></div>
   </dialog>
 
+  <dialog id="deploy-dialog" class="dialog">
+    <div class="dialog-header">
+      <div>
+        <p class="eyebrow">CONTRACT DEPLOYMENT</p>
+        <h2 id="deploy-title">Deployment preview</h2>
+      </div>
+      <button id="deploy-close" class="icon-button" aria-label="Close">×</button>
+    </div>
+    <div id="deploy-summary" class="dialog-summary"></div>
+    <div id="deploy-details" class="dialog-tasks"></div>
+    <div class="panel-actions deployment-actions">
+      <button id="deploy-submit" class="button primary" disabled>Prepare deployment first</button>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
   <script type="module" src="./insights.js"></script>
+  <script type="module" src="./deploy-ui.js"></script>
 </body>
 </html>
