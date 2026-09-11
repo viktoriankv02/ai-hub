@@ -5,6 +5,10 @@ const processes = [
   ["AI Hub web", ["scripts/web-server.mjs"]],
 ];
 
+if (process.env.DROP_HUNTER_AGENT_AUTOSTART === "true") {
+  processes.push(["Drop Hunter agent", ["scripts/drop-hunter-agent-worker.ts"]]);
+}
+
 let shuttingDown = false;
 const children = processes.map(([label, script]) => {
   const child = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", ...script], {
@@ -36,5 +40,6 @@ process.once("SIGTERM", () => shutdown(0));
 console.log("AI Hub Drop Hunter local stack");
 console.log("Web: http://127.0.0.1:3000");
 console.log("Drop Hunter API: http://127.0.0.1:8787");
+console.log(`Safe autonomous agent: ${process.env.DROP_HUNTER_AGENT_AUTOSTART === "true" ? "enabled" : "disabled"}`);
 console.log("AI Jobs are not started by this stack.");
-console.log("Press Ctrl+C to stop both services.");
+console.log("Press Ctrl+C to stop services.");
