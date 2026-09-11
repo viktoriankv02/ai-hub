@@ -73,6 +73,35 @@
       </div>
       <div id="queue" class="queue"></div>
     </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
+        <p class="eyebrow">HUMAN CONTROL</p>
+        <h2>Needs your attention</h2>
+        <p class="muted">Only tasks that require approval, manual participation, wallet/gas access, high-risk review, or failure handling appear here.</p>
+      </div>
+      <div id="attention-queue" class="queue"><div class="empty compact-empty"><span>Loading attention queue…</span></div></div>
+    </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
+        <p class="eyebrow">SYSTEM READINESS</p>
+        <h2>Networks & discovery</h2>
+        <p class="muted">RPC availability is shown only as configured/missing. Endpoint values and secrets are never exposed to the browser.</p>
+      </div>
+      <div id="network-readiness" class="queue"></div>
+      <div id="source-health" class="queue"></div>
+    </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
+        <p class="eyebrow">AGENT MEMORY</p>
+        <h2>History & learning</h2>
+        <p class="muted">Execution outcomes become persistent evidence and are summarized into bounded learning signals for future prioritization.</p>
+      </div>
+      <div id="learning-summary" class="queue"></div>
+      <div id="history-list" class="queue"></div>
+    </section>
   </main>
 
   <dialog id="task-dialog" class="dialog">
@@ -89,5 +118,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
+  <script type="module" src="./insights.js"></script>
 </body>
 </html>
