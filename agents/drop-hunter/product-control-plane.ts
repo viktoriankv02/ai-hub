@@ -14,6 +14,9 @@ import { DropHunterProjectRepository } from "./product-store.js";
 import { isRecurringTaskDue } from "./task-schedule.js";
 import type { DropHunterEvidenceStore } from "./evidence-history.js";
 import { createEvidenceRecord } from "./evidence-history.js";
+import { deriveLearningSignals } from "./learning-signals.js";
+import type { DropHunterTaskPriority } from "./task-prioritizer.js";
+import { compareDropHunterTaskPriority, prioritizeDropHunterTask } from "./task-prioritizer.js";
 
 export interface DropHunterDashboardSummary {
   projects: number;
@@ -33,6 +36,7 @@ export interface DropHunterTaskView {
   projectScore: number;
   task: StoredDropTask;
   automation: DropTaskAutomationDecision;
+  priority: DropHunterTaskPriority;
 }
 
 export class DropHunterProductControlPlane {
@@ -85,6 +89,7 @@ export class DropHunterProductControlPlane {
     const projects = await this.listProjects();
     const queue: DropHunterTaskView[] = [];
     const now = this.now().toISOString();
+    const learning = this.evidence ? deriveLearningSignals(await this.evidence.list()) : undefined;
     for (const project of projects) {
       if (project.status === "paused" || project.status === "archived" || project.status === "completed") continue;
       for (const task of project.tasks) {
@@ -93,37 +98,59 @@ export class DropHunterProductControlPlane {
         const automation = this.policy.decide(task);
         if (mode && automation.mode !== mode) continue;
         if (mode === "approval" && task.status === "ready") continue;
+        const projectScore = project.intelligence?.total ?? project.opportunity.score;
         queue.push({
           projectId: project.id,
           projectName: project.opportunity.name,
-          projectScore: project.intelligence?.total ?? project.opportunity.score,
+          projectScore,
           task,
           automation,
+          priority: prioritizeDropHunterTask({
+            projectId: project.id,
+            projectScore,
+            rewardPotential: project.intelligence?.rewardPotential ?? project.opportunity.signals.rewardSignals,
+            task,
+            automation,
+            learning,
+            now,
+          }),
         });
       }
     }
-    return queue;
+    return queue.sort(compareTaskViews);
   }
 
   async approvedTaskQueue(): Promise<DropHunterTaskView[]> {
     const projects = await this.listProjects();
     const queue: DropHunterTaskView[] = [];
+    const now = this.now().toISOString();
+    const learning = this.evidence ? deriveLearningSignals(await this.evidence.list()) : undefined;
     for (const project of projects) {
       if (project.status === "paused" || project.status === "archived" || project.status === "completed") continue;
       for (const task of project.tasks) {
         if (task.status !== "ready") continue;
         const automation = this.policy.decide(task);
         if (automation.mode !== "approval") continue;
+        const projectScore = project.intelligence?.total ?? project.opportunity.score;
         queue.push({
           projectId: project.id,
           projectName: project.opportunity.name,
-          projectScore: project.intelligence?.total ?? project.opportunity.score,
+          projectScore,
           task,
           automation,
+          priority: prioritizeDropHunterTask({
+            projectId: project.id,
+            projectScore,
+            rewardPotential: project.intelligence?.rewardPotential ?? project.opportunity.signals.rewardSignals,
+            task,
+            automation,
+            learning,
+            now,
+          }),
         });
       }
     }
-    return queue;
+    return queue.sort(compareTaskViews);
   }
 
   async setProjectStatus(id: string, status: DropHunterProjectStatus): Promise<DropHunterProjectRecord> {
@@ -170,4 +197,11 @@ export class DropHunterProductControlPlane {
       timestamp: this.now().toISOString(),
     }));
   }
+}
+
+function compareTaskViews(a: DropHunterTaskView, b: DropHunterTaskView): number {
+  return compareDropHunterTaskPriority(
+    { priority: a.priority, task: a.task },
+    { priority: b.priority, task: b.task },
+  );
 }
