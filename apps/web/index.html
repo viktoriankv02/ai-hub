@@ -95,6 +95,16 @@
 
     <section class="agent-panel">
       <div class="panel-heading">
+        <p class="eyebrow">REWARD TRACKING</p>
+        <h2>Rewards</h2>
+        <p class="muted">Detected and claimable rewards are persisted separately from task execution. Claim transactions remain user-controlled.</p>
+      </div>
+      <div id="reward-summary" class="queue"></div>
+      <div id="reward-list" class="queue"></div>
+    </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
         <p class="eyebrow">SYSTEM READINESS</p>
         <h2>Networks & discovery</h2>
         <p class="muted">RPC availability is shown only as configured/missing. Endpoint values and secrets are never exposed to the browser.</p>
@@ -145,5 +155,6 @@
   <script type="module" src="./app.js"></script>
   <script type="module" src="./insights.js"></script>
   <script type="module" src="./deploy-ui.js"></script>
+  <script type="module" src="./rewards.js"></script>
 </body>
 </html>
