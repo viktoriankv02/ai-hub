@@ -9,10 +9,12 @@ import {
   OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
+  type DiscoverySource,
   type DropHunterProjectStatus,
   type DropHunterTaskStatus,
 } from "../agents/drop-hunter/index.js";
 import { OfficialPageOpportunitySource, parseOfficialPagesJson } from "../agents/drop-hunter/official-page-opportunity-source.js";
+import { getDropHunterChainReadiness } from "../agents/drop-hunter/chain-readiness.js";
 
 const port = Number(process.env.DROP_HUNTER_API_PORT ?? 8787);
 const storePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
@@ -37,7 +39,7 @@ const policy = new DropTaskAutomationPolicy({
 });
 const store = new JsonFileDropHunterProductStore(storePath);
 const repository = new DropHunterProjectRepository(store);
-const sources = [
+const sources: DiscoverySource[] = [
   new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
   new GitHubRepositoryOpportunitySource({ queries, maxResults, token: process.env.GITHUB_TOKEN }),
 ];
@@ -62,6 +64,12 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "dashboard") {
       return send(res, 200, await control.dashboard());
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "chains") {
+      return send(res, 200, { chains: getDropHunterChainReadiness() });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "sources") {
+      return send(res, 200, { sources: discovery.statuses() });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "projects") {
       return send(res, 200, { projects: await control.listProjects() });
