@@ -33,3 +33,5 @@ export * from "./product-ingestion.js";
 export * from "./product-control-plane.js";
 export * from "./agent-task-runner.js";
 export * from "./contract-template-catalog.js";
+export * from "./evidence-history.js";
+export * from "./learning-signals.js";
