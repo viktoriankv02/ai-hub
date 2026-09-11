@@ -5,10 +5,12 @@ import {
   DropHunterProjectRepository,
   DropTaskAutomationPolicy,
   GitHubRepositoryOpportunitySource,
+  JsonFileDropHunterEvidenceStore,
   JsonFileDropHunterProductStore,
   OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
+  deriveLearningSignals,
   type DiscoverySource,
   type DropHunterProjectStatus,
   type DropHunterTaskStatus,
@@ -18,6 +20,7 @@ import { getDropHunterChainReadiness } from "../agents/drop-hunter/chain-readine
 
 const port = Number(process.env.DROP_HUNTER_API_PORT ?? 8787);
 const storePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
+const evidencePath = process.env.DROP_HUNTER_EVIDENCE_PATH ?? "data/drop-hunter-evidence.json";
 const queries = (process.env.DROP_HUNTER_GITHUB_QUERIES ?? "incentivized testnet")
   .split(",")
   .map((query) => query.trim())
@@ -38,6 +41,7 @@ const policy = new DropTaskAutomationPolicy({
   allowAutonomousWalletActions: allowAutonomousWallet,
 });
 const store = new JsonFileDropHunterProductStore(storePath);
+const evidence = new JsonFileDropHunterEvidenceStore(evidencePath);
 const repository = new DropHunterProjectRepository(store);
 const sources: DiscoverySource[] = [
   new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
@@ -46,7 +50,7 @@ const sources: DiscoverySource[] = [
 if (officialPages.length > 0) sources.push(new OfficialPageOpportunitySource({ pages: officialPages }));
 const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
-const control = new DropHunterProductControlPlane(store, repository, ingestion, policy);
+const control = new DropHunterProductControlPlane(store, repository, ingestion, policy, () => new Date(), evidence);
 
 const PROJECT_STATUSES = new Set<DropHunterProjectStatus>(["new", "active", "paused", "completed", "archived"]);
 const TASK_STATUSES = new Set<DropHunterTaskStatus>(["pending", "ready", "running", "waiting-approval", "completed", "failed", "skipped"]);
@@ -60,7 +64,7 @@ createServer(async (req, res) => {
     const path = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
     if (req.method === "GET" && path.length === 1 && path[0] === "health") {
-      return send(res, 200, { ok: true, service: "drop-hunter", storePath, officialPages: officialPages.length });
+      return send(res, 200, { ok: true, service: "drop-hunter", storePath, evidencePath, officialPages: officialPages.length });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "dashboard") {
       return send(res, 200, await control.dashboard());
@@ -70,6 +74,21 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "sources") {
       return send(res, 200, { sources: discovery.statuses() });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "history") {
+      const projectId = url.searchParams.get("projectId");
+      const taskId = url.searchParams.get("taskId");
+      const limitRaw = Number(url.searchParams.get("limit") ?? 100);
+      const limit = Number.isInteger(limitRaw) ? Math.max(1, Math.min(500, limitRaw)) : 100;
+      let records = projectId
+        ? taskId ? await evidence.listTask(projectId, taskId) : await evidence.listProject(projectId)
+        : await evidence.list();
+      records = records.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.id.localeCompare(a.id)).slice(0, limit);
+      return send(res, 200, { records, count: records.length });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "learning") {
+      const records = await evidence.list();
+      return send(res, 200, { signals: deriveLearningSignals(records) });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "projects") {
       return send(res, 200, { projects: await control.listProjects() });
@@ -133,6 +152,7 @@ createServer(async (req, res) => {
 }).listen(port, "127.0.0.1", () => {
   console.log(`Drop Hunter API: http://127.0.0.1:${port}`);
   console.log(`Store: ${storePath}`);
+  console.log(`Evidence: ${evidencePath}`);
   console.log(`Official pages: ${officialPages.length}`);
 });
 
