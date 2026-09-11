@@ -21,6 +21,7 @@
     "deployment:smoke-ai": "hardhat run deploy/10_smoke_ai_job.ts --network base",
     "drop-hunter": "tsx scripts/drop-hunter-report.ts",
     "drop-hunter:once": "tsx scripts/drop-hunter-once.ts",
+    "drop-hunter:agent": "tsx scripts/drop-hunter-agent-once.ts",
     "drop-hunter:server": "tsx scripts/drop-hunter-server.ts",
     "ai-jobs:plan": "tsx scripts/ai-job-plan-once.ts",
     "ai-jobs:server": "tsx scripts/ai-job-server.ts",
