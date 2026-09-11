@@ -12,6 +12,7 @@ import {
   type DropHunterProjectStatus,
   type DropHunterTaskStatus,
 } from "../agents/drop-hunter/index.js";
+import { OfficialPageOpportunitySource, parseOfficialPagesJson } from "../agents/drop-hunter/official-page-opportunity-source.js";
 
 const port = Number(process.env.DROP_HUNTER_API_PORT ?? 8787);
 const storePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
@@ -23,6 +24,7 @@ const maxResults = Number(process.env.DROP_HUNTER_GITHUB_MAX_RESULTS ?? 10);
 const maxAutonomousCostUsd = Number(process.env.DROP_HUNTER_MAX_AUTONOMOUS_COST_USD ?? 0);
 const allowAutonomousGas = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_GAS === "true";
 const allowAutonomousWallet = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_WALLET === "true";
+const officialPages = parseOfficialPagesJson(process.env.DROP_HUNTER_OFFICIAL_PAGES_JSON);
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DROP_HUNTER_API_PORT must be a valid TCP port");
 if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) throw new Error("DROP_HUNTER_GITHUB_MAX_RESULTS must be between 1 and 100");
@@ -35,10 +37,12 @@ const policy = new DropTaskAutomationPolicy({
 });
 const store = new JsonFileDropHunterProductStore(storePath);
 const repository = new DropHunterProjectRepository(store);
-const discovery = new OpportunityDiscoveryRegistry([
+const sources = [
   new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
   new GitHubRepositoryOpportunitySource({ queries, maxResults, token: process.env.GITHUB_TOKEN }),
-]);
+];
+if (officialPages.length > 0) sources.push(new OfficialPageOpportunitySource({ pages: officialPages }));
+const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
 const control = new DropHunterProductControlPlane(store, repository, ingestion, policy);
 
@@ -54,7 +58,7 @@ createServer(async (req, res) => {
     const path = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
     if (req.method === "GET" && path.length === 1 && path[0] === "health") {
-      return send(res, 200, { ok: true, service: "drop-hunter", storePath });
+      return send(res, 200, { ok: true, service: "drop-hunter", storePath, officialPages: officialPages.length });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "dashboard") {
       return send(res, 200, await control.dashboard());
@@ -108,6 +112,8 @@ createServer(async (req, res) => {
       const details = {
         error: typeof body.error === "string" ? body.error : undefined,
         txHash: typeof body.txHash === "string" ? body.txHash : undefined,
+        contractAddress: typeof body.contractAddress === "string" ? body.contractAddress : undefined,
+        blockNumber: typeof body.blockNumber === "number" ? body.blockNumber : undefined,
       };
       return send(res, 200, { task: await control.setTaskStatus(path[1], path[3], status as DropHunterTaskStatus, details) });
     }
@@ -119,6 +125,7 @@ createServer(async (req, res) => {
 }).listen(port, "127.0.0.1", () => {
   console.log(`Drop Hunter API: http://127.0.0.1:${port}`);
   console.log(`Store: ${storePath}`);
+  console.log(`Official pages: ${officialPages.length}`);
 });
 
 function setCors(res: ServerResponse): void {
