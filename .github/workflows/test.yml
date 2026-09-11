@@ -1,12 +1,14 @@
-name: AI Hub Tests
+name: AI Hub CI
 
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
-  test:
+  validate:
+    name: Build, compile and test
     runs-on: ubuntu-latest
 
     steps:
@@ -17,12 +19,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm install
 
-      - name: Compile
-        run: npx hardhat compile
+      - name: TypeScript build
+        run: npm run build
+
+      - name: Compile contracts
+        run: npm run compile
 
       - name: Run tests
-        run: npx hardhat test
+        run: npm test
