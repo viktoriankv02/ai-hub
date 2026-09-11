@@ -15,6 +15,8 @@ export interface StoredDropTask extends DropTask {
   attempts: number;
   lastError?: string;
   txHashes?: string[];
+  contractAddresses?: string[];
+  lastBlockNumber?: number;
 }
 
 export interface DropHunterProjectRecord {
@@ -152,6 +154,13 @@ export interface UpsertProjectInput {
   timestamp?: string;
 }
 
+export interface TaskStatusDetails {
+  error?: string;
+  txHash?: string;
+  contractAddress?: string;
+  blockNumber?: number;
+}
+
 export class DropHunterProjectRepository {
   constructor(
     private readonly store: DropHunterProductStore,
@@ -202,7 +211,7 @@ export class DropHunterProjectRepository {
     projectId: string,
     taskId: string,
     status: DropHunterTaskStatus,
-    details: { error?: string; txHash?: string } = {},
+    details: TaskStatusDetails = {},
   ): Promise<StoredDropTask> {
     const project = await this.requireProject(projectId);
     const task = project.tasks.find((item) => item.id === taskId);
@@ -214,6 +223,8 @@ export class DropHunterProjectRepository {
     if (status === "completed") task.completedAt = timestamp;
     if (details.error !== undefined) task.lastError = details.error;
     if (details.txHash) task.txHashes = [...new Set([...(task.txHashes ?? []), details.txHash])];
+    if (details.contractAddress) task.contractAddresses = [...new Set([...(task.contractAddresses ?? []), details.contractAddress])];
+    if (details.blockNumber !== undefined) task.lastBlockNumber = details.blockNumber;
     project.updatedAt = timestamp;
     await this.store.putProject(project);
     return clone(task);
