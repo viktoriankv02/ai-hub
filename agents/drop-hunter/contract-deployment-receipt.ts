@@ -52,6 +52,8 @@ export class ContractDeploymentReceiptReconciler {
       if (!receipt.contractAddress) throw new Error("successful deployment receipt is missing contract address");
       await this.repository.setTaskStatus(input.projectId, input.taskId, "completed", {
         txHash: input.transactionHash,
+        contractAddress: receipt.contractAddress,
+        blockNumber: receipt.blockNumber,
       });
       return { ...input, ...receipt, taskUpdated: true };
     }
@@ -60,6 +62,7 @@ export class ContractDeploymentReceiptReconciler {
       await this.repository.setTaskStatus(input.projectId, input.taskId, "failed", {
         error: "contract deployment transaction failed",
         txHash: input.transactionHash,
+        blockNumber: receipt.blockNumber,
       });
       return { ...input, ...receipt, taskUpdated: true };
     }
