@@ -30,6 +30,7 @@ export * from "./drop-hunter-agent.js";
 export * from "./reward-analyzer.js";
 export * from "./reward-model.js";
 export * from "./reward-store.js";
+export * from "./reward-service.js";
 export * from "./transaction-preview.js";
 export * from "./wallet-execution.js";
 export * from "./product-store.js";
