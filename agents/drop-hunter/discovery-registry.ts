@@ -1,5 +1,6 @@
 import type { ProjectOpportunity } from "./types.js";
 import type { AsyncOpportunitySource, OpportunitySource } from "./opportunity-source.js";
+import { canonicalOpportunityKey } from "./opportunity-identity.js";
 
 export type DiscoverySource = OpportunitySource | AsyncOpportunitySource;
 
@@ -111,7 +112,6 @@ export class OpportunityDiscoveryRegistry {
   private ensureHealth(source: DiscoverySource): DiscoverySourceHealth {
     const existing = this.health.get(source.id);
     if (existing) return existing;
-
     const value: DiscoverySourceHealth = {
       sourceId: source.id,
       sourceName: source.name,
@@ -143,25 +143,43 @@ export class OpportunityDiscoveryRegistry {
 }
 
 function mergeBatches(batches: ProjectOpportunity[][]) {
-  const byId = new Map<string, ProjectOpportunity>();
+  const byIdentity = new Map<string, ProjectOpportunity>();
   for (const batch of batches) {
     for (const opportunity of batch) {
-      const existing = byId.get(opportunity.id);
+      const key = canonicalOpportunityKey(opportunity);
+      const existing = byIdentity.get(key);
       if (!existing) {
-        byId.set(opportunity.id, cloneOpportunity(opportunity));
+        byIdentity.set(key, cloneOpportunity(opportunity));
         continue;
       }
-      byId.set(opportunity.id, {
+      byIdentity.set(key, {
         ...existing,
         priority: Math.max(existing.priority, opportunity.priority),
-        signals: { ...existing.signals, ...opportunity.signals },
+        chainId: existing.chainId ?? opportunity.chainId,
+        signals: mergeSignals(existing.signals, opportunity.signals),
         sources: [...new Set([...existing.sources, ...opportunity.sources])],
         actions: [...new Set([...existing.actions, ...opportunity.actions])],
-        notes: opportunity.notes ?? existing.notes,
+        notes: mergeNotes(existing.notes, opportunity.notes),
       });
     }
   }
-  return [...byId.values()];
+  return [...byIdentity.values()];
+}
+
+function mergeSignals(left: ProjectOpportunity["signals"], right: ProjectOpportunity["signals"]): ProjectOpportunity["signals"] {
+  const result = { ...left };
+  for (const [key, value] of Object.entries(right)) {
+    if (value === undefined) continue;
+    const signal = key as keyof ProjectOpportunity["signals"];
+    const previous = result[signal];
+    result[signal] = previous === undefined ? value : Math.max(previous, value);
+  }
+  return result;
+}
+
+function mergeNotes(left?: string, right?: string): string | undefined {
+  const notes = [...new Set([left, right].filter((value): value is string => Boolean(value?.trim())))];
+  return notes.length ? notes.join(" | ") : undefined;
 }
 
 function cloneOpportunity(opportunity: ProjectOpportunity): ProjectOpportunity {

@@ -17,6 +17,34 @@ describe("Drop Hunter", function () {
     expect(ranked.every((item) => item.score >= 0 && item.score <= 100)).to.equal(true);
   });
 
+  it("uses explicit priority before confidence when opportunity scores tie", function () {
+    const ranked = rankOpportunities([
+      {
+        id: "priority-first",
+        name: "Priority First",
+        vm: "EVM",
+        stage: "testnet",
+        priority: 100,
+        signals: { testnetActivity: 80 },
+        sources: ["config/chainCatalog.ts"],
+        actions: ["verify"],
+      },
+      {
+        id: "confidence-first",
+        name: "Confidence First",
+        vm: "EVM",
+        stage: "testnet",
+        priority: 90,
+        signals: { testnetActivity: 80 },
+        sources: ["https://project.example/docs", "https://github.com/project/repo"],
+        actions: ["verify"],
+      },
+    ]);
+
+    expect(ranked[0].id).to.equal("priority-first");
+    expect(ranked[1].confidence).to.be.greaterThan(ranked[0].confidence);
+  });
+
   it("does not invent reward evidence", function () {
     const scored = scoreOpportunity(PRIORITY_OPPORTUNITIES[0]);
 

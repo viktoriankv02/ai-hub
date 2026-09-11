@@ -1,10 +1,16 @@
 import { spawn } from "node:child_process";
 
 const processes = [
-  ["AI job API", ["scripts/ai-job-server.ts"]],
+  ["Drop Hunter API", ["scripts/drop-hunter-server.ts"]],
+  ["Drop Hunter Rewards API", ["scripts/drop-hunter-reward-server.ts"]],
   ["AI Hub web", ["scripts/web-server.mjs"]],
 ];
 
+if (process.env.DROP_HUNTER_AGENT_AUTOSTART === "true") {
+  processes.push(["Drop Hunter agent", ["scripts/drop-hunter-agent-worker.ts"]]);
+}
+
+let shuttingDown = false;
 const children = processes.map(([label, script]) => {
   const child = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", ...script], {
     stdio: "inherit",
@@ -20,7 +26,6 @@ const children = processes.map(([label, script]) => {
   return child;
 });
 
-let shuttingDown = false;
 function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -33,7 +38,10 @@ function shutdown(code = 0) {
 process.once("SIGINT", () => shutdown(0));
 process.once("SIGTERM", () => shutdown(0));
 
-console.log("AI Hub local stack");
+console.log("AI Hub Drop Hunter local stack");
 console.log("Web: http://127.0.0.1:3000");
-console.log("API: http://127.0.0.1:8787");
-console.log("Press Ctrl+C to stop both services.");
+console.log("Drop Hunter API: http://127.0.0.1:8787");
+console.log("Drop Hunter Rewards API: http://127.0.0.1:8788");
+console.log(`Safe autonomous agent: ${process.env.DROP_HUNTER_AGENT_AUTOSTART === "true" ? "enabled" : "disabled"}`);
+console.log("AI Jobs are not started by this stack.");
+console.log("Press Ctrl+C to stop services.");

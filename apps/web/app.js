@@ -1,12 +1,21 @@
 const API = globalThis.AI_HUB_API ?? "http://127.0.0.1:8787";
 
-const fallbackOpportunities = [
-  { id:"ink-sepolia", name:"Ink Sepolia", chainId:763373, score:94, confidence:82, rewardPotential:70, risk:35, effort:40, freshness:96, stage:"testnet", tasks:[{id:"demo-deploy-erc20",title:"Deploy ERC20",description:"Deploy a documented ERC20 contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-deploy-nft",title:"Deploy NFT",description:"Deploy a documented NFT contract on the test network.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-verify",title:"Verify contract",description:"Verify deployment evidence and contract metadata.",kind:"verify",risk:"low",automated:true,requiresWallet:false,requiresGas:false,requiresUserApproval:false,source:"Demo data"}] },
-  { id:"base-sepolia", name:"Base Sepolia", chainId:84532, score:89, confidence:78, rewardPotential:65, risk:42, effort:46, freshness:91, stage:"testnet", tasks:[{id:"demo-core",title:"Deploy core",description:"Deploy the documented core contract set.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-adapter",title:"Deploy EVM adapter",description:"Deploy the trusted EVM adapter configuration.",kind:"deploy",risk:"medium",automated:false,requiresWallet:true,requiresGas:true,requiresUserApproval:true,rewardHint:"Testnet activity — reward eligibility not verified.",source:"Demo data"},{id:"demo-record",title:"Record verified activity",description:"Record completion evidence after the transaction succeeds.",kind:"other",risk:"medium",automated:true,requiresWallet:true,requiresGas:false,requiresUserApproval:true,source:"Demo data"}] },
-];
+const chainNames = new Map([
+  [8453, "Base"],
+  [84532, "Base Sepolia"],
+  [11155111, "Ethereum Sepolia"],
+  [763373, "Ink Sepolia"],
+  [421614, "Arbitrum Sepolia"],
+  [11155420, "Optimism Sepolia"],
+  [97, "BNB Testnet"],
+  [43113, "Avalanche Fuji"],
+  [80002, "Polygon Amoy"],
+  [9746, "Plasma Testnet"],
+  [5042002, "Arc Testnet"],
+  [42431, "Tempo Testnet (Moderato)"],
+]);
 
-const chainNames = new Map([[763373,"Ink Sepolia"],[84532,"Base Sepolia"],[11155111,"Ethereum Sepolia"],[9746,"Plasma Testnet"],[5042002,"Arc Testnet"],[42431,"Tempo Testnet (Moderato)"]]);
-let opportunities = [];
+let projects = [];
 let filter = "all";
 let selected = null;
 let walletAddress = null;
@@ -15,112 +24,38 @@ let walletChainId = null;
 const $ = (selector) => document.querySelector(selector);
 
 async function api(path, options = {}) {
-  const response = await fetch(`${API}${path}`, { headers: { "Content-Type": "application/json", ...(options.headers ?? {}) }, ...options });
+  const response = await fetch(`${API}${path}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+    ...options,
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
   return data;
 }
 
-function normalizeReport(report) {
-  return (report.results ?? []).map((result) => ({
-    ...result.opportunity,
-    score: result.score.total,
-    confidence: result.score.confidence,
-    rewardPotential: result.score.rewardPotential,
-    risk: result.score.risk,
-    effort: result.score.effort,
-    freshness: result.score.freshness,
-    tasks: result.tasks ?? [],
-    warnings: result.warnings ?? [],
-    reasons: result.score.reasons ?? [],
-  }));
+function normalizeProject(project) {
+  const opportunity = project.opportunity ?? {};
+  const intelligence = project.intelligence ?? {};
+  return {
+    ...project,
+    ...opportunity,
+    projectStatus: project.status,
+    score: intelligence.total ?? opportunity.score ?? 0,
+    confidence: intelligence.confidence ?? opportunity.confidence ?? 0,
+    rewardPotential: intelligence.rewardPotential ?? opportunity.signals?.rewardSignals ?? 0,
+    risk: intelligence.risk ?? 0,
+    effort: intelligence.effort ?? 0,
+    freshness: intelligence.freshness ?? 0,
+    reasons: intelligence.reasons ?? opportunity.reasons ?? [],
+    tasks: project.tasks ?? [],
+  };
 }
 
-function sourceLabel(source) {
-  if (!source) return "Unknown source";
-  try { return new URL(source).hostname.replace(/^www\./, ""); } catch { return source; }
-}
-
-function rewardLabel(value) {
-  if (value >= 75) return "Strong reward evidence";
-  if (value >= 60) return "Reward evidence detected";
-  if (value > 0) return "Weak reward signal";
-  return "No reward evidence";
-}
-
-function renderStats() {
-  const allTasks = opportunities.flatMap((o) => o.tasks);
-  $("#opportunities").textContent = opportunities.length;
-  $("#high-score").textContent = opportunities.filter((o) => o.score >= 85).length;
-  $("#tasks").textContent = allTasks.filter((t) => t.automated !== false).length;
-  $("#approval").textContent = allTasks.filter((t) => t.requiresUserApproval).length;
-}
-
-function render() {
-  const chain = $("#chain").value;
-  const visible = opportunities.filter((o) => {
-    if (filter === "high" && o.score < 85) return false;
-    if (filter === "approval" && !o.tasks.some((t) => t.requiresUserApproval)) return false;
-    if (chain !== "All networks" && chainNames.get(o.chainId) !== chain) return false;
-    return true;
-  });
-
-  $("#opportunity-list").innerHTML = visible.map((o) => {
-    const topReasons = (o.reasons ?? []).slice(0, 3);
-    const approvalCount = o.tasks.filter((t) => t.requiresUserApproval).length;
-    const reward = o.rewardPotential ?? 0;
-    const stage = String(o.stage ?? "research").replaceAll("-", " ");
-    const sources = (o.sources ?? []).slice(0, 2);
-    return `
-      <article class="opportunity">
-        <div class="opportunity-main">
-          <div class="title-row"><h3>${escapeHtml(o.name)}</h3><span class="badge">${escapeHtml(chainNames.get(o.chainId) ?? String(o.chainId ?? "Unknown"))}</span><span class="stage">${escapeHtml(stage)}</span></div>
-          <div class="meta">${o.tasks.length} task${o.tasks.length === 1 ? "" : "s"} · confidence ${o.confidence ?? "—"}/100 · reward signal ${reward}/100 · risk ${o.risk ?? "—"}/100</div>
-          <div class="tasks">${o.tasks.slice(0, 5).map((t) => `<span class="task ${t.requiresUserApproval ? "approval" : "ready"}"><span class="task-dot"></span>${escapeHtml(t.title)}</span>`).join("")}${o.tasks.length > 5 ? `<span class="task more">+${o.tasks.length - 5} more</span>` : ""}</div>
-          <div class="reasons"><span>• ${escapeHtml(rewardLabel(reward))}</span>${sources.map((source) => `<span>• Source: ${escapeHtml(sourceLabel(source))}</span>`).join("")}${topReasons.slice(0, 2).map((reason) => `<span>• ${escapeHtml(reason)}</span>`).join("")}</div>
-        </div>
-        <div class="opportunity-side">
-          <div class="score">${o.score}<small>/ 100</small></div>
-          <div class="score-bar"><span style="width:${Math.max(0, Math.min(100, o.score))}%"></span></div>
-          <div class="side-meta">${approvalCount ? `${approvalCount} approval${approvalCount === 1 ? "" : "s"} required` : "No approval required"}</div>
-          <button class="button secondary" data-open="${escapeAttr(o.id)}">View tasks</button>
-        </div>
-      </article>`;
-  }).join("") || `<div class="empty"><strong>No opportunities</strong><span>Try another filter or run a fresh scan.</span></div>`;
-
-  document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => showTasks(button.dataset.open)));
-  renderStats();
-}
-
-function showTasks(id) {
-  selected = opportunities.find((o) => o.id === id);
-  if (!selected) return;
-  const reward = selected.rewardPotential ?? 0;
-  const warnings = selected.warnings ?? [];
-  $("#dialog-title").textContent = selected.name;
-  $("#dialog-summary").innerHTML = `
-    <div><span>Score</span><strong>${selected.score}/100</strong></div>
-    <div><span>Confidence</span><strong>${selected.confidence ?? "—"}/100</strong></div>
-    <div><span>Reward signal</span><strong>${reward}/100</strong></div>
-    <div><span>Risk</span><strong>${selected.risk ?? "—"}/100</strong></div>
-    <div><span>Tasks</span><strong>${selected.tasks.length}</strong></div>`;
-  $("#dialog-tasks").innerHTML = `${warnings.length ? `<div class="reasons">${warnings.map((warning) => `<span>⚠ ${escapeHtml(warning)}</span>`).join("")}</div>` : ""}${selected.tasks.map((task) => {
-    const status = task.requiresUserApproval ? "Approval required" : task.automated ? "Automation ready" : "Manual action";
-    const source = task.source ? sourceLabel(task.source) : "Unknown source";
-    return `
-    <article class="task-card">
-      <div class="task-card-head"><div><h3>${escapeHtml(task.title)}</h3><span class="task-kind">${escapeHtml(task.kind ?? "other")} · ${escapeHtml(status)}</span></div><span class="risk ${escapeAttr(task.risk ?? "medium")}">${escapeHtml(task.risk ?? "unknown")} risk</span></div>
-      <p>${escapeHtml(task.description ?? "No task description supplied.")}</p>
-      <div class="task-flags">
-        ${task.requiresWallet ? `<span>Wallet</span>` : ""}${task.requiresGas ? `<span>Gas</span>` : ""}${task.requiresUserApproval ? `<span class="approval-flag">User approval</span>` : `<span class="ready-flag">Ready</span>`}
-      </div>
-      ${task.rewardHint ? `<small class="source">Reward: ${escapeHtml(task.rewardHint)}</small>` : ""}
-      ${task.source ? `<small class="source">Source: ${escapeHtml(source)}</small>` : ""}
-      ${task.deadline ? `<small class="source">Deadline: ${escapeHtml(task.deadline)}</small>` : ""}
-    </article>`;
-  }).join("") || `<div class="empty"><span>No tasks extracted.</span></div>`;
-  const dialog = $("#task-dialog");
-  if (typeof dialog.showModal === "function") dialog.showModal();
+async function loadProjects() {
+  const data = await api("/projects");
+  projects = (data.projects ?? []).map(normalizeProject);
+  setApiStatus(true, `${projects.length} project(s) stored`);
+  render();
 }
 
 async function scan() {
@@ -128,84 +63,173 @@ async function scan() {
   button.disabled = true;
   button.textContent = "Scanning…";
   try {
-    const report = await api("/opportunities");
-    opportunities = normalizeReport(report);
-    setApiStatus(true, `${report.successfulSources?.length ?? 0} source(s) succeeded`);
-    render();
-    toast(`Scan complete — ${opportunities.length} opportunities found`);
+    const result = await api("/scan", { method: "POST", body: "{}" });
+    await loadProjects();
+    await refreshQueue();
+    toast(`Scan complete — ${result.storedProjects ?? 0} project(s) updated`);
   } catch (error) {
-    if (!opportunities.length) opportunities = fallbackOpportunities;
-    setApiStatus(false, "Using local demo data");
-    render();
-    toast("API unavailable — showing demo data", "warning");
+    setApiStatus(false, error.message);
+    toast(`Scan failed: ${error.message}`, "error");
     console.warn(error);
   } finally {
-    setTimeout(() => { button.textContent = "Scan opportunities"; button.disabled = false; }, 700);
+    button.textContent = "Scan opportunities";
+    button.disabled = false;
   }
 }
 
-async function planJobs() {
-  const button = $("#plan");
-  button.disabled = true;
-  button.textContent = "Preparing…";
+function render() {
+  const chain = $("#chain").value;
+  const visible = projects.filter((project) => {
+    if (filter === "high" && project.score < 85) return false;
+    if (filter === "approval" && !project.tasks.some((task) => taskDecision(task) === "approval")) return false;
+    if (chain !== "All networks" && chainNames.get(project.chainId) !== chain) return false;
+    return project.projectStatus !== "archived";
+  });
+
+  $("#opportunity-list").innerHTML = visible.map((project) => {
+    const approvals = project.tasks.filter((task) => taskDecision(task) === "approval").length;
+    const autonomous = project.tasks.filter((task) => taskDecision(task) === "autonomous").length;
+    const completed = project.tasks.filter((task) => task.status === "completed").length;
+    const stage = String(project.stage ?? "research").replaceAll("-", " ");
+    return `
+      <article class="opportunity">
+        <div class="opportunity-main">
+          <div class="title-row">
+            <h3>${escapeHtml(project.name)}</h3>
+            <span class="badge">${escapeHtml(chainNames.get(project.chainId) ?? String(project.chainId ?? project.vm ?? "Unknown"))}</span>
+            <span class="stage">${escapeHtml(stage)}</span>
+          </div>
+          <div class="meta">${project.tasks.length} tasks · ${completed} completed · ${autonomous} autonomous · ${approvals} approval</div>
+          <div class="tasks">${project.tasks.slice(0, 6).map((task) => {
+            const mode = taskDecision(task);
+            return `<span class="task ${mode === "approval" ? "approval" : "ready"}"><span class="task-dot"></span>${escapeHtml(task.title)}</span>`;
+          }).join("")}${project.tasks.length > 6 ? `<span class="task more">+${project.tasks.length - 6} more</span>` : ""}</div>
+          <div class="reasons">
+            <span>• Project status: ${escapeHtml(project.projectStatus)}</span>
+            <span>• Reward signal: ${project.rewardPotential}/100</span>
+            ${(project.reasons ?? []).slice(0, 2).map((reason) => `<span>• ${escapeHtml(reason)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="opportunity-side">
+          <div class="score">${Math.round(project.score)}<small>/ 100</small></div>
+          <div class="score-bar"><span style="width:${Math.max(0, Math.min(100, project.score))}%"></span></div>
+          <div class="side-meta">confidence ${formatConfidence(project.confidence)}</div>
+          <button class="button secondary" data-open="${escapeAttr(project.id)}">View tasks</button>
+        </div>
+      </article>`;
+  }).join("") || `<div class="empty"><strong>No stored opportunities</strong><span>Run a scan to discover projects.</span></div>`;
+
+  document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => showTasks(button.dataset.open)));
+  renderStats();
+}
+
+function renderStats() {
+  const tasks = projects.flatMap((project) => project.tasks);
+  $("#opportunities").textContent = projects.length;
+  $("#high-score").textContent = projects.filter((project) => project.score >= 85).length;
+  $("#tasks").textContent = tasks.filter((task) => task.status !== "completed" && taskDecision(task) === "autonomous").length;
+  $("#approval").textContent = tasks.filter((task) => task.status !== "completed" && taskDecision(task) === "approval").length;
+}
+
+function taskDecision(task) {
+  if (!task.automated) return "manual";
+  if (task.kind === "social") return "manual";
+  if (task.risk === "high" || task.requiresUserApproval || task.requiresWallet || task.requiresGas) return "approval";
+  if (["check-in", "verify", "community"].includes(task.kind)) return "autonomous";
+  return "approval";
+}
+
+function showTasks(id) {
+  selected = projects.find((project) => project.id === id);
+  if (!selected) return;
+  $("#dialog-title").textContent = selected.name;
+  $("#dialog-summary").innerHTML = `
+    <div><span>Score</span><strong>${Math.round(selected.score)}/100</strong></div>
+    <div><span>Confidence</span><strong>${formatConfidence(selected.confidence)}</strong></div>
+    <div><span>Reward signal</span><strong>${selected.rewardPotential}/100</strong></div>
+    <div><span>Status</span><strong>${escapeHtml(selected.projectStatus)}</strong></div>
+    <div><span>Tasks</span><strong>${selected.tasks.length}</strong></div>`;
+  $("#dialog-tasks").innerHTML = selected.tasks.map((task) => taskCard(selected, task)).join("") || `<div class="empty"><span>No tasks extracted.</span></div>`;
+  bindTaskButtons();
+  const dialog = $("#task-dialog");
+  if (typeof dialog.showModal === "function") dialog.showModal();
+}
+
+function taskCard(project, task) {
+  const mode = taskDecision(task);
+  const label = mode === "autonomous" ? "Agent can execute" : mode === "approval" ? "Approval required" : "Manual";
+  const actions = task.status === "completed" || task.status === "skipped" ? "" : mode === "approval"
+    ? `<button class="button compact primary" data-approve-project="${escapeAttr(project.id)}" data-approve-task="${escapeAttr(task.id)}">Approve</button><button class="button compact secondary" data-skip-project="${escapeAttr(project.id)}" data-skip-task="${escapeAttr(task.id)}">Skip</button>`
+    : mode === "manual" ? `<button class="button compact secondary" data-skip-project="${escapeAttr(project.id)}" data-skip-task="${escapeAttr(task.id)}">Mark skipped</button>` : "";
+  return `
+    <article class="task-card">
+      <div class="task-card-head">
+        <div><h3>${escapeHtml(task.title)}</h3><span class="task-kind">${escapeHtml(task.kind)} · ${escapeHtml(label)} · ${escapeHtml(task.status)}</span></div>
+        <span class="risk ${escapeAttr(task.risk)}">${escapeHtml(task.risk)} risk</span>
+      </div>
+      <p>${escapeHtml(task.description ?? "")}</p>
+      <div class="task-flags">
+        ${task.requiresWallet ? "<span>Wallet</span>" : ""}
+        ${task.requiresGas ? "<span>Gas</span>" : ""}
+        ${mode === "autonomous" ? '<span class="ready-flag">Autonomous</span>' : ""}
+        ${mode === "approval" ? '<span class="approval-flag">Approval gate</span>' : ""}
+      </div>
+      ${task.txHashes?.length ? `<small class="source">Tx: ${escapeHtml(task.txHashes.at(-1))}</small>` : ""}
+      ${task.source ? `<small class="source">Source: ${escapeHtml(task.source)}</small>` : ""}
+      <div class="panel-actions">${actions}</div>
+    </article>`;
+}
+
+async function refreshQueue() {
   try {
-    const result = await api("/opportunities/plan", { method: "POST", body: JSON.stringify({ agentId: "1", reward: "0", minimumScore: 30, includeApprovalRequired: true }) });
-    button.textContent = `${result.jobs.length} jobs prepared`;
-    toast(`${result.jobs.length} AI jobs added to the queue`);
-    await refreshJobs();
+    const [autonomous, approval, manual] = await Promise.all([
+      api("/tasks?mode=autonomous"),
+      api("/tasks?mode=approval"),
+      api("/tasks?mode=manual"),
+    ]);
+    renderQueue(autonomous.tasks ?? [], approval.tasks ?? [], manual.tasks ?? []);
   } catch (error) {
-    button.textContent = "Planning failed";
-    toast("Could not prepare jobs", "error");
-    console.warn(error);
-  } finally {
-    setTimeout(() => { button.textContent = "Prepare eligible tasks"; button.disabled = false; }, 1000);
+    $("#queue").innerHTML = `<div class="queue-offline"><strong>Drop Hunter API offline</strong><span>${escapeHtml(error.message)}</span></div>`;
   }
 }
 
-async function refreshJobs() {
-  try {
-    const data = await api("/jobs");
-    renderJobs(data.jobs ?? []);
-  } catch (error) {
-    $("#queue").innerHTML = `<div class="queue-offline"><strong>Control plane offline</strong><span>Start the AI job server to manage the execution queue.</span></div>`;
-    console.warn(error);
-  }
-}
-
-function renderJobs(jobs) {
-  const counts = jobs.reduce((acc, job) => { acc[job.status] = (acc[job.status] ?? 0) + 1; return acc; }, {});
+function renderQueue(autonomous, approval, manual) {
   $("#queue").innerHTML = `
     <div class="queue-summary">
-      <span class="queue-item done"><i></i>${counts.completed ?? 0} completed</span>
-      <span class="queue-item running"><i></i>${counts.running ?? 0} running</span>
-      <span class="queue-item waiting"><i></i>${counts.queued ?? 0} queued</span>
-      <span class="queue-item cancelled"><i></i>${counts.cancelled ?? 0} cancelled</span>
+      <span class="queue-item done"><i></i>${autonomous.length} autonomous</span>
+      <span class="queue-item waiting"><i></i>${approval.length} awaiting approval</span>
+      <span class="queue-item cancelled"><i></i>${manual.length} manual</span>
     </div>
-    <div class="job-list">${jobs.length ? jobs.slice(-10).reverse().map((job) => {
-      const taskKind = job.metadata?.taskKind ?? "task";
-      const taskRisk = job.metadata?.taskRisk ?? "unknown";
-      const approval = job.metadata?.requiresUserApproval === true || job.metadata?.requiresUserApproval === "true";
+    <div class="job-list">${[...approval, ...autonomous, ...manual].slice(0, 15).map((item) => {
+      const mode = item.automation?.mode ?? "manual";
       return `<div class="job-row">
-        <div class="job-icon">${taskKind.slice(0, 1).toUpperCase()}</div>
-        <span class="job-info"><strong>${escapeHtml(job.metadata?.opportunityName ?? job.opportunityId ?? "AI task")}</strong><small>${escapeHtml(taskKind)} · ${escapeHtml(taskRisk)} risk${approval ? " · approval required" : ""}</small></span>
-        <span class="badge status-${escapeAttr(job.status)}">${escapeHtml(job.status)}</span>
-        ${job.status === "queued" ? `<button class="button compact secondary" data-run="${escapeAttr(job.id)}">Run</button>` : ""}
-        ${job.status === "failed" ? `<button class="button compact secondary" data-retry="${escapeAttr(job.id)}">Retry</button>` : ""}
+        <div class="job-icon">${escapeHtml(String(item.task.kind ?? "T").slice(0, 1).toUpperCase())}</div>
+        <span class="job-info"><strong>${escapeHtml(item.projectName)}</strong><small>${escapeHtml(item.task.title)} · ${escapeHtml(mode)}</small></span>
+        <span class="badge">${escapeHtml(item.task.status)}</span>
+        ${mode === "approval" ? `<button class="button compact secondary" data-approve-project="${escapeAttr(item.projectId)}" data-approve-task="${escapeAttr(item.task.id)}">Approve</button>` : ""}
       </div>`;
-    }).join("") : `<div class="empty compact-empty"><span>No jobs in the queue yet.</span></div>`}</div>`;
-
-  document.querySelectorAll("[data-run]").forEach((button) => button.addEventListener("click", async () => { await jobAction(button.dataset.run, "run"); }));
-  document.querySelectorAll("[data-retry]").forEach((button) => button.addEventListener("click", async () => { await jobAction(button.dataset.retry, "retry"); }));
+    }).join("") || `<div class="empty compact-empty"><span>No pending tasks.</span></div>`}</div>`;
+  bindTaskButtons();
 }
 
-async function jobAction(id, action) {
+function bindTaskButtons() {
+  document.querySelectorAll("[data-approve-task]").forEach((button) => button.addEventListener("click", async () => {
+    await taskAction(button.dataset.approveProject, button.dataset.approveTask, "approve");
+  }));
+  document.querySelectorAll("[data-skip-task]").forEach((button) => button.addEventListener("click", async () => {
+    await taskAction(button.dataset.skipProject, button.dataset.skipTask, "skip");
+  }));
+}
+
+async function taskAction(projectId, taskId, action) {
   try {
-    await api(`/jobs/${encodeURIComponent(id)}/${action}`, { method: "POST", body: "{}" });
-    toast(action === "run" ? "Job sent to runner" : "Job queued for retry");
-    await refreshJobs();
+    await api(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/${action}`, { method: "POST", body: "{}" });
+    toast(action === "approve" ? "Task approved" : "Task skipped");
+    await loadProjects();
+    await refreshQueue();
+    if (selected?.id === projectId && $("#task-dialog").open) showTasks(projectId);
   } catch (error) {
-    toast(`Could not ${action} job`, "error");
-    console.warn(error);
+    toast(error.message, "error");
   }
 }
 
@@ -221,7 +245,7 @@ async function connectWallet() {
     walletChainId = Number.parseInt(chainHex, 16);
     updateWalletButton();
     updateNetworkLabel();
-    toast(walletAddress ? `Wallet connected on ${chainNames.get(walletChainId) ?? `chain ${walletChainId}`} ` : "Wallet connected");
+    toast("Wallet connected");
   } catch (error) {
     toast("Wallet connection was cancelled", "warning");
     console.warn(error);
@@ -232,20 +256,22 @@ function updateWalletButton() {
   const button = $("#connect");
   button.textContent = walletAddress ? `${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}` : "Connect wallet";
   button.classList.toggle("connected", Boolean(walletAddress));
-  button.title = walletAddress ? `Connected: ${walletAddress}` : "Connect wallet";
 }
 
 function updateNetworkLabel() {
-  const label = $("#network-label");
-  if (!walletChainId) return;
-  label.textContent = chainNames.get(walletChainId) ?? `Chain ${walletChainId}`;
+  if (walletChainId) $("#network-label").textContent = chainNames.get(walletChainId) ?? `Chain ${walletChainId}`;
 }
 
 function setApiStatus(connected, title) {
   const status = $("#api-status");
   status.textContent = connected ? "API connected" : "API offline";
   status.className = `badge ${connected ? "api-ok" : "api-offline"}`;
-  status.title = title;
+  status.title = title ?? "";
+}
+
+function formatConfidence(value) {
+  if (value === undefined || value === null) return "—";
+  return value <= 1 ? `${Math.round(value * 100)}%` : `${Math.round(value)}%`;
 }
 
 function toast(message, kind = "success") {
@@ -256,11 +282,13 @@ function toast(message, kind = "success") {
   toast.timer = setTimeout(() => { node.className = "toast"; }, 2800);
 }
 
-function escapeHtml(value) { return String(value ?? "").replace(/[&<>\"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+}
 function escapeAttr(value) { return escapeHtml(value).replace(/'/g, "&#39;"); }
 
 for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => {
-  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
   tab.classList.add("active");
   filter = tab.dataset.filter;
   render();
@@ -268,8 +296,8 @@ for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click
 
 $("#chain").addEventListener("change", render);
 $("#scan").addEventListener("click", scan);
-$("#plan").addEventListener("click", planJobs);
-$("#refresh-jobs").addEventListener("click", refreshJobs);
+$("#plan").addEventListener("click", refreshQueue);
+$("#refresh-jobs").addEventListener("click", refreshQueue);
 $("#connect").addEventListener("click", connectWallet);
 $("#dialog-close").addEventListener("click", () => $("#task-dialog").close());
 $("#task-dialog").addEventListener("click", (event) => { if (event.target === $("#task-dialog")) $("#task-dialog").close(); });
@@ -279,6 +307,12 @@ if (globalThis.ethereum?.on) {
   globalThis.ethereum.on("chainChanged", (chainHex) => { walletChainId = Number.parseInt(chainHex, 16); updateNetworkLabel(); });
 }
 
-await scan();
-await refreshJobs();
-setInterval(refreshJobs, 5000);
+try {
+  await loadProjects();
+  await refreshQueue();
+} catch (error) {
+  setApiStatus(false, error.message);
+  render();
+  await refreshQueue();
+}
+setInterval(refreshQueue, 10000);
