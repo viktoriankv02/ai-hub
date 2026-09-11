@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
+  DropHunterAttentionQueue,
   DropHunterProductControlPlane,
   DropHunterProductIngestionService,
   DropHunterProjectRepository,
@@ -51,6 +52,7 @@ if (officialPages.length > 0) sources.push(new OfficialPageOpportunitySource({ p
 const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
 const control = new DropHunterProductControlPlane(store, repository, ingestion, policy, () => new Date(), evidence);
+const attention = new DropHunterAttentionQueue(policy);
 
 const PROJECT_STATUSES = new Set<DropHunterProjectStatus>(["new", "active", "paused", "completed", "archived"]);
 const TASK_STATUSES = new Set<DropHunterTaskStatus>(["pending", "ready", "running", "waiting-approval", "completed", "failed", "skipped"]);
@@ -74,6 +76,9 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "sources") {
       return send(res, 200, { sources: discovery.statuses() });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "attention") {
+      return send(res, 200, { items: attention.build(await control.listProjects()) });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "history") {
       const projectId = url.searchParams.get("projectId");
