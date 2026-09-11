@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 const processes = [
   ["Drop Hunter API", ["scripts/drop-hunter-server.ts"]],
+  ["Drop Hunter Rewards API", ["scripts/drop-hunter-reward-server.ts"]],
   ["AI Hub web", ["scripts/web-server.mjs"]],
 ];
 
@@ -40,6 +41,7 @@ process.once("SIGTERM", () => shutdown(0));
 console.log("AI Hub Drop Hunter local stack");
 console.log("Web: http://127.0.0.1:3000");
 console.log("Drop Hunter API: http://127.0.0.1:8787");
+console.log("Drop Hunter Rewards API: http://127.0.0.1:8788");
 console.log(`Safe autonomous agent: ${process.env.DROP_HUNTER_AGENT_AUTOSTART === "true" ? "enabled" : "disabled"}`);
 console.log("AI Jobs are not started by this stack.");
 console.log("Press Ctrl+C to stop services.");
