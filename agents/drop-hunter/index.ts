@@ -46,6 +46,7 @@ export * from "./contract-artifact-loader.js";
 export * from "./contract-deployment-engine.js";
 export * from "./contract-deployment-preview.js";
 export * from "./contract-deployment-receipt.js";
+export * from "./deployment-session.js";
 export * from "./ethers-deployment-receipt-provider.js";
 export * from "./evidence-history.js";
 export * from "./learning-signals.js";
