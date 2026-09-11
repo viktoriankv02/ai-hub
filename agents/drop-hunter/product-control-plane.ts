@@ -8,8 +8,10 @@ import type {
   DropHunterProjectStatus,
   DropHunterTaskStatus,
   StoredDropTask,
+  TaskStatusDetails,
 } from "./product-store.js";
 import { DropHunterProjectRepository } from "./product-store.js";
+import { isRecurringTaskDue } from "./task-schedule.js";
 
 export interface DropHunterDashboardSummary {
   projects: number;
@@ -37,6 +39,7 @@ export class DropHunterProductControlPlane {
     private readonly repository: DropHunterProjectRepository,
     private readonly ingestion?: DropHunterProductIngestionService,
     private readonly policy: DropTaskAutomationPolicy = new DropTaskAutomationPolicy(),
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async scan(): Promise<DropHunterIngestionResult> {
@@ -60,16 +63,17 @@ export class DropHunterProductControlPlane {
     const projects = await this.store.listProjects();
     const tasks = projects.flatMap((project) => project.tasks.map((task) => ({ project, task })));
     const decisions = tasks.map(({ task }) => ({ task, decision: this.policy.decide(task) }));
+    const due = (task: StoredDropTask) => task.status === "completed" && isRecurringTaskDue(task, this.now().toISOString());
 
     return {
       projects: projects.length,
       activeProjects: projects.filter((project) => project.status === "active" || project.status === "new").length,
       highScoreProjects: projects.filter((project) => (project.intelligence?.total ?? project.opportunity.score) >= highScoreThreshold).length,
       tasks: tasks.length,
-      readyTasks: tasks.filter(({ task }) => task.status === "ready" || task.status === "pending").length,
-      autonomousTasks: decisions.filter(({ task, decision }) => decision.mode === "autonomous" && task.status !== "completed" && task.status !== "skipped").length,
+      readyTasks: tasks.filter(({ task }) => task.status === "ready" || task.status === "pending" || due(task)).length,
+      autonomousTasks: decisions.filter(({ task, decision }) => decision.mode === "autonomous" && task.status !== "skipped" && (task.status !== "completed" || due(task))).length,
       approvalTasks: decisions.filter(({ task, decision }) => decision.mode === "approval" && task.status !== "ready" && task.status !== "completed" && task.status !== "skipped").length,
-      completedTasks: tasks.filter(({ task }) => task.status === "completed").length,
+      completedTasks: tasks.filter(({ task }) => task.status === "completed" && !due(task)).length,
       failedTasks: tasks.filter(({ task }) => task.status === "failed").length,
     };
   }
@@ -77,10 +81,12 @@ export class DropHunterProductControlPlane {
   async taskQueue(mode?: DropTaskAutomationDecision["mode"]): Promise<DropHunterTaskView[]> {
     const projects = await this.listProjects();
     const queue: DropHunterTaskView[] = [];
+    const now = this.now().toISOString();
     for (const project of projects) {
       if (project.status === "paused" || project.status === "archived" || project.status === "completed") continue;
       for (const task of project.tasks) {
-        if (task.status === "completed" || task.status === "skipped") continue;
+        const recurringDue = task.status === "completed" && isRecurringTaskDue(task, now);
+        if (task.status === "skipped" || (task.status === "completed" && !recurringDue)) continue;
         const automation = this.policy.decide(task);
         if (mode && automation.mode !== mode) continue;
         if (mode === "approval" && task.status === "ready") continue;
@@ -121,12 +127,7 @@ export class DropHunterProductControlPlane {
     return this.repository.setProjectStatus(id, status);
   }
 
-  async setTaskStatus(
-    projectId: string,
-    taskId: string,
-    status: DropHunterTaskStatus,
-    details: { error?: string; txHash?: string } = {},
-  ): Promise<StoredDropTask> {
+  async setTaskStatus(projectId: string, taskId: string, status: DropHunterTaskStatus, details: TaskStatusDetails = {}): Promise<StoredDropTask> {
     return this.repository.setTaskStatus(projectId, taskId, status, details);
   }
 
