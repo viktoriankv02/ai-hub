@@ -1,11 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
+  ContractDeploymentPreviewBuilder,
   DropHunterAttentionQueue,
+  DropHunterContractDeploymentEngine,
+  DropHunterContractTemplateCatalog,
   DropHunterProductControlPlane,
   DropHunterProductIngestionService,
   DropHunterProjectRepository,
   DropTaskAutomationPolicy,
   GitHubRepositoryOpportunitySource,
+  HardhatJsonArtifactLoader,
   JsonFileDropHunterEvidenceStore,
   JsonFileDropHunterProductStore,
   OpportunityDiscoveryRegistry,
@@ -13,6 +17,7 @@ import {
   StaticOpportunitySource,
   deriveLearningSignals,
   type DiscoverySource,
+  type DropHunterContractTemplateId,
   type DropHunterProjectStatus,
   type DropHunterTaskStatus,
 } from "../agents/drop-hunter/index.js";
@@ -53,9 +58,13 @@ const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
 const control = new DropHunterProductControlPlane(store, repository, ingestion, policy, () => new Date(), evidence);
 const attention = new DropHunterAttentionQueue(policy);
+const contractTemplates = new DropHunterContractTemplateCatalog();
+const deploymentEngine = new DropHunterContractDeploymentEngine(contractTemplates);
+const deploymentPreview = new ContractDeploymentPreviewBuilder(new HardhatJsonArtifactLoader());
 
 const PROJECT_STATUSES = new Set<DropHunterProjectStatus>(["new", "active", "paused", "completed", "archived"]);
 const TASK_STATUSES = new Set<DropHunterTaskStatus>(["pending", "ready", "running", "waiting-approval", "completed", "failed", "skipped"]);
+const TEMPLATE_IDS = new Set<DropHunterContractTemplateId>(["counter", "erc20", "erc721"]);
 
 createServer(async (req, res) => {
   setCors(res);
@@ -79,6 +88,9 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "attention") {
       return send(res, 200, { items: attention.build(await control.listProjects()) });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "contract-templates") {
+      return send(res, 200, { templates: contractTemplates.list() });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "history") {
       const projectId = url.searchParams.get("projectId");
@@ -119,6 +131,25 @@ createServer(async (req, res) => {
         failedSources: result.discovery.failedSources,
         storedProjects: result.projects.length,
         warnings: result.warnings,
+      });
+    }
+    if (req.method === "POST" && path.length === 5 && path[0] === "projects" && path[2] === "tasks" && path[4] === "deployment-preview") {
+      const project = await control.getProject(path[1]);
+      if (!project) return send(res, 404, { error: `drop hunter project not found: ${path[1]}` });
+      const task = project.tasks.find((item) => item.id === path[3]);
+      if (!task) return send(res, 404, { error: `drop hunter task not found: ${path[3]}` });
+      const body = await readJson(req);
+      const templateId = typeof body.templateId === "string" && TEMPLATE_IDS.has(body.templateId as DropHunterContractTemplateId)
+        ? body.templateId as DropHunterContractTemplateId
+        : undefined;
+      const constructorArgs = Array.isArray(body.constructorArgs) ? body.constructorArgs : undefined;
+      const plan = deploymentEngine.plan(project, task, { templateId, constructorArgs, env: process.env });
+      const preview = await deploymentPreview.build(plan);
+      return send(res, 200, {
+        preview,
+        chain: { key: plan.chain.key, name: plan.chain.name, chainId: plan.chain.chainId, explorerUrl: plan.explorerUrl },
+        template: plan.template,
+        blockers: plan.blockers,
       });
     }
     if (req.method === "POST" && path.length === 3 && path[0] === "projects" && path[2] === "status") {
