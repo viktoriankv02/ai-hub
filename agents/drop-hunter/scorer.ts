@@ -1,4 +1,5 @@
 import type { DropHunterReport, ProjectOpportunity, ScoredOpportunity } from "./types.js";
+import { aggregateSourceTrust } from "./source-trust.js";
 
 const WEIGHTS = {
   fundingEvidence: 15,
@@ -28,17 +29,16 @@ function weighted(signals: ProjectOpportunity["signals"]): number {
 }
 
 function confidence(opportunity: ProjectOpportunity): number {
-  const evidenceCount = opportunity.sources.length;
-  const populatedSignals = Object.values(opportunity.signals).filter(
-    (value) => value !== undefined,
-  ).length;
-
-  return Math.min(100, evidenceCount * 15 + populatedSignals * 8);
+  const populatedSignals = Object.values(opportunity.signals).filter((value) => value !== undefined).length;
+  const sourceTrust = aggregateSourceTrust(opportunity.sources).trust;
+  const signalCoverage = Math.min(100, populatedSignals * 10);
+  return Math.min(100, Math.round(sourceTrust * 0.65 + signalCoverage * 0.35));
 }
 
 function reasons(opportunity: ProjectOpportunity): string[] {
   const { signals } = opportunity;
   const result: string[] = [];
+  const sourceTrust = aggregateSourceTrust(opportunity.sources);
 
   if ((signals.developerProgram ?? 0) >= 70) result.push("strong developer-program signal");
   if ((signals.testnetActivity ?? 0) >= 70) result.push("active testnet opportunity");
@@ -46,6 +46,8 @@ function reasons(opportunity: ProjectOpportunity): string[] {
   if ((signals.onchainVerifiability ?? 0) >= 70) result.push("actions are easy to verify on-chain");
   if ((signals.fundingEvidence ?? 0) >= 70) result.push("strong funding evidence");
   if ((signals.timing ?? 0) >= 70) result.push("good timing for early participation");
+  if (sourceTrust.trust >= 80) result.push("high-trust source evidence");
+  if (opportunity.sources.length >= 2) result.push("corroborated by multiple sources");
   if (opportunity.priority >= 90) result.push("first-priority target");
 
   return result;
@@ -63,7 +65,7 @@ export function scoreOpportunity(opportunity: ProjectOpportunity): ScoredOpportu
 export function rankOpportunities(opportunities: ProjectOpportunity[]): ScoredOpportunity[] {
   return opportunities
     .map(scoreOpportunity)
-    .sort((a, b) => b.score - a.score || b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort((a, b) => b.score - a.score || b.confidence - a.confidence || b.priority - a.priority || a.name.localeCompare(b.name));
 }
 
 export function createReport(opportunities: ProjectOpportunity[]): DropHunterReport {
