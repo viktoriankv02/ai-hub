@@ -12,6 +12,8 @@ import type {
 } from "./product-store.js";
 import { DropHunterProjectRepository } from "./product-store.js";
 import { isRecurringTaskDue } from "./task-schedule.js";
+import type { DropHunterEvidenceStore } from "./evidence-history.js";
+import { createEvidenceRecord } from "./evidence-history.js";
 
 export interface DropHunterDashboardSummary {
   projects: number;
@@ -40,6 +42,7 @@ export class DropHunterProductControlPlane {
     private readonly ingestion?: DropHunterProductIngestionService,
     private readonly policy: DropTaskAutomationPolicy = new DropTaskAutomationPolicy(),
     private readonly now: () => Date = () => new Date(),
+    private readonly evidence?: DropHunterEvidenceStore,
   ) {}
 
   async scan(): Promise<DropHunterIngestionResult> {
@@ -128,7 +131,9 @@ export class DropHunterProductControlPlane {
   }
 
   async setTaskStatus(projectId: string, taskId: string, status: DropHunterTaskStatus, details: TaskStatusDetails = {}): Promise<StoredDropTask> {
-    return this.repository.setTaskStatus(projectId, taskId, status, details);
+    const task = await this.repository.setTaskStatus(projectId, taskId, status, details);
+    await this.recordTerminalOutcome(projectId, task, status, details);
+    return task;
   }
 
   async approveTask(projectId: string, taskId: string): Promise<StoredDropTask> {
@@ -143,6 +148,26 @@ export class DropHunterProductControlPlane {
   }
 
   async skipTask(projectId: string, taskId: string): Promise<StoredDropTask> {
-    return this.repository.setTaskStatus(projectId, taskId, "skipped");
+    return this.setTaskStatus(projectId, taskId, "skipped");
+  }
+
+  private async recordTerminalOutcome(projectId: string, task: StoredDropTask, status: DropHunterTaskStatus, details: TaskStatusDetails): Promise<void> {
+    if (!this.evidence || !["completed", "failed", "skipped"].includes(status)) return;
+    const project = await this.store.getProject(projectId);
+    const outcome = status === "completed" ? "success" : status === "failed" ? "failed" : "skipped";
+    await this.evidence.append(createEvidenceRecord({
+      projectId,
+      taskId: task.id,
+      taskKind: task.kind,
+      outcome,
+      rewardOutcome: "unknown",
+      source: task.source,
+      chainId: project?.opportunity.chainId,
+      transactionHash: details.txHash,
+      contractAddress: details.contractAddress,
+      blockNumber: details.blockNumber,
+      note: details.error,
+      timestamp: this.now().toISOString(),
+    }));
   }
 }
