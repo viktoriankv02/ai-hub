@@ -8,6 +8,7 @@ import {
   DropHunterProductIngestionService,
   DropHunterProjectRepository,
   DropTaskAutomationPolicy,
+  EthersDeploymentReceiptProvider,
   GitHubRepositoryOpportunitySource,
   HardhatJsonArtifactLoader,
   JsonFileDropHunterEvidenceStore,
@@ -15,6 +16,7 @@ import {
   OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
+  deploymentPreviewHash,
   deriveLearningSignals,
   type DiscoverySource,
   type DropHunterContractTemplateId,
@@ -61,10 +63,12 @@ const attention = new DropHunterAttentionQueue(policy);
 const contractTemplates = new DropHunterContractTemplateCatalog();
 const deploymentEngine = new DropHunterContractDeploymentEngine(contractTemplates);
 const deploymentPreview = new ContractDeploymentPreviewBuilder(new HardhatJsonArtifactLoader());
+const deploymentReceipts = new EthersDeploymentReceiptProvider(process.env);
 
 const PROJECT_STATUSES = new Set<DropHunterProjectStatus>(["new", "active", "paused", "completed", "archived"]);
 const TASK_STATUSES = new Set<DropHunterTaskStatus>(["pending", "ready", "running", "waiting-approval", "completed", "failed", "skipped"]);
 const TEMPLATE_IDS = new Set<DropHunterContractTemplateId>(["counter", "erc20", "erc721"]);
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
 createServer(async (req, res) => {
   setCors(res);
@@ -134,14 +138,9 @@ createServer(async (req, res) => {
       });
     }
     if (req.method === "POST" && path.length === 5 && path[0] === "projects" && path[2] === "tasks" && path[4] === "deployment-preview") {
-      const project = await control.getProject(path[1]);
-      if (!project) return send(res, 404, { error: `drop hunter project not found: ${path[1]}` });
-      const task = project.tasks.find((item) => item.id === path[3]);
-      if (!task) return send(res, 404, { error: `drop hunter task not found: ${path[3]}` });
+      const { project, task } = await requireProjectTask(path[1], path[3]);
       const body = await readJson(req);
-      const templateId = typeof body.templateId === "string" && TEMPLATE_IDS.has(body.templateId as DropHunterContractTemplateId)
-        ? body.templateId as DropHunterContractTemplateId
-        : undefined;
+      const templateId = parseTemplateId(body.templateId);
       const constructorArgs = Array.isArray(body.constructorArgs) ? body.constructorArgs : undefined;
       const plan = deploymentEngine.plan(project, task, { templateId, constructorArgs, env: process.env });
       const preview = await deploymentPreview.build(plan);
@@ -151,6 +150,50 @@ createServer(async (req, res) => {
         template: plan.template,
         blockers: plan.blockers,
       });
+    }
+    if (req.method === "POST" && path.length === 5 && path[0] === "projects" && path[2] === "tasks" && path[4] === "deployment-submitted") {
+      const { project, task } = await requireProjectTask(path[1], path[3]);
+      if (task.status !== "ready" && task.status !== "running") throw new Error(`deployment task must be approved before submission: ${task.id}`);
+      const body = await readJson(req);
+      const transactionHash = requireTransactionHash(body.transactionHash);
+      const previewHash = typeof body.previewHash === "string" ? body.previewHash : "";
+      const templateId = parseTemplateId(body.templateId);
+      const constructorArgs = Array.isArray(body.constructorArgs) ? body.constructorArgs : undefined;
+      const approvedProject = { ...project, tasks: project.tasks.map((item) => item.id === task.id ? { ...item, status: "ready" as const } : item) };
+      const approvedTask = { ...task, status: "ready" as const };
+      const plan = deploymentEngine.plan(approvedProject, approvedTask, { templateId, constructorArgs, env: process.env });
+      const regenerated = await deploymentPreview.build(plan);
+      if (!previewHash || previewHash !== deploymentPreviewHash(regenerated)) throw new Error("deployment preview hash does not match the approved payload");
+      if (task.status === "running" && task.txHashes?.includes(transactionHash)) {
+        return send(res, 200, { task, transactionHash, idempotent: true });
+      }
+      const updated = await control.setTaskStatus(project.id, task.id, "running", { txHash: transactionHash });
+      return send(res, 200, { task: updated, transactionHash, idempotent: false });
+    }
+    if (req.method === "POST" && path.length === 5 && path[0] === "projects" && path[2] === "tasks" && path[4] === "deployment-reconcile") {
+      const { project, task } = await requireProjectTask(path[1], path[3]);
+      const body = await readJson(req);
+      const transactionHash = requireTransactionHash(body.transactionHash);
+      if (!task.txHashes?.includes(transactionHash)) throw new Error("deployment transaction is not registered for this task");
+      const chainId = project.opportunity.chainId;
+      if (!Number.isInteger(chainId) || !chainId || chainId <= 0) throw new Error(`project ${project.id} does not have a valid EVM chainId`);
+      const receipt = await deploymentReceipts.getReceipt(transactionHash, chainId);
+      if (receipt.status === "pending") return send(res, 200, { receipt, task, updated: false });
+      if (receipt.status === "failed") {
+        const updated = await control.setTaskStatus(project.id, task.id, "failed", {
+          error: "contract deployment transaction failed",
+          txHash: transactionHash,
+          blockNumber: receipt.blockNumber,
+        });
+        return send(res, 200, { receipt, task: updated, updated: true });
+      }
+      if (!receipt.contractAddress) throw new Error("successful deployment receipt is missing contract address");
+      const updated = await control.setTaskStatus(project.id, task.id, "completed", {
+        txHash: transactionHash,
+        contractAddress: receipt.contractAddress,
+        blockNumber: receipt.blockNumber,
+      });
+      return send(res, 200, { receipt, task: updated, updated: true });
     }
     if (req.method === "POST" && path.length === 3 && path[0] === "projects" && path[2] === "status") {
       const body = await readJson(req);
@@ -191,6 +234,25 @@ createServer(async (req, res) => {
   console.log(`Evidence: ${evidencePath}`);
   console.log(`Official pages: ${officialPages.length}`);
 });
+
+async function requireProjectTask(projectId: string, taskId: string) {
+  const project = await control.getProject(projectId);
+  if (!project) throw new Error(`drop hunter project not found: ${projectId}`);
+  const task = project.tasks.find((item) => item.id === taskId);
+  if (!task) throw new Error(`drop hunter task not found: ${taskId}`);
+  return { project, task };
+}
+
+function parseTemplateId(value: unknown): DropHunterContractTemplateId | undefined {
+  return typeof value === "string" && TEMPLATE_IDS.has(value as DropHunterContractTemplateId)
+    ? value as DropHunterContractTemplateId
+    : undefined;
+}
+
+function requireTransactionHash(value: unknown): string {
+  if (typeof value !== "string" || !TX_HASH_RE.test(value)) throw new Error("invalid deployment transaction hash");
+  return value;
+}
 
 function setCors(res: ServerResponse): void {
   res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1:3000");
