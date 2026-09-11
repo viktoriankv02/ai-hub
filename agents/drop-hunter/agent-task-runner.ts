@@ -20,6 +20,7 @@ export interface DropHunterAgentTaskExecutionResult {
 
 export interface DropHunterAgentTaskExecutor {
   readonly kinds: readonly DropTaskKind[];
+  supports?(context: DropHunterAgentTaskExecutionContext): boolean;
   execute(context: DropHunterAgentTaskExecutionContext): Promise<DropHunterAgentTaskExecutionResult>;
 }
 
@@ -71,7 +72,7 @@ export class DropHunterAgentTaskRunner {
   async runOnce(): Promise<DropHunterAgentRunResult> {
     const autonomous = await this.control.taskQueue("autonomous");
     const candidates = autonomous
-      .filter((item) => item.task.status === "pending" || item.task.status === "ready" || item.task.status === "failed")
+      .filter((item) => ["pending", "ready", "failed", "completed"].includes(item.task.status))
       .slice(0, this.maxTasksPerRun);
     const records: DropHunterAgentRunRecord[] = [];
 
@@ -81,7 +82,7 @@ export class DropHunterAgentTaskRunner {
 
     return {
       considered: autonomous.length,
-      executed: records.length,
+      executed: records.filter((record) => !record.result.note?.startsWith("unsupported:" )).length,
       completed: records.filter((record) => record.result.status === "completed").length,
       failed: records.filter((record) => record.result.status === "failed").length,
       skipped: records.filter((record) => record.result.status === "skipped").length,
@@ -90,67 +91,52 @@ export class DropHunterAgentTaskRunner {
   }
 
   private async executeOne(item: DropHunterTaskView): Promise<DropHunterAgentRunRecord> {
+    const context: DropHunterAgentTaskExecutionContext = {
+      projectId: item.projectId,
+      projectName: item.projectName,
+      projectScore: item.projectScore,
+      taskId: item.task.id,
+      taskKind: item.task.kind,
+      title: item.task.title,
+      source: item.task.source,
+    };
+
     if (item.automation.mode !== "autonomous" || !item.automation.canExecute) {
-      return {
-        projectId: item.projectId,
-        taskId: item.task.id,
-        kind: item.task.kind,
-        automation: item.automation.mode,
-        result: { status: "skipped", note: "task is not authorized for autonomous execution" },
-      };
+      return this.record(item, { status: "skipped", note: "unsupported: task is not authorized for autonomous execution" });
     }
 
     const executor = this.executors.get(item.task.kind);
-    if (!executor) {
-      return {
-        projectId: item.projectId,
-        taskId: item.task.id,
-        kind: item.task.kind,
-        automation: item.automation.mode,
-        result: { status: "skipped", note: `no executor registered for ${item.task.kind}` },
-      };
+    if (!executor || (executor.supports && !executor.supports(context))) {
+      return this.record(item, { status: "skipped", note: `unsupported: no trusted executor configured for ${item.task.kind}` });
     }
 
     await this.control.setTaskStatus(item.projectId, item.task.id, "running");
     try {
-      const result = await executor.execute({
-        projectId: item.projectId,
-        projectName: item.projectName,
-        projectScore: item.projectScore,
-        taskId: item.task.id,
-        taskKind: item.task.kind,
-        title: item.task.title,
-        source: item.task.source,
-      });
+      const result = await executor.execute(context);
       if (result.status === "completed") {
         await this.control.setTaskStatus(item.projectId, item.task.id, "completed", { txHash: result.txHash });
       } else if (result.status === "failed") {
         await this.control.setTaskStatus(item.projectId, item.task.id, "failed", { error: result.note });
       } else {
-        await this.control.setTaskStatus(item.projectId, item.task.id, "skipped");
+        await this.control.setTaskStatus(item.projectId, item.task.id, "ready");
       }
-      return { projectId: item.projectId, taskId: item.task.id, kind: item.task.kind, automation: item.automation.mode, result };
+      return this.record(item, result);
     } catch (error) {
       const note = error instanceof Error ? error.message : String(error);
       await this.control.setTaskStatus(item.projectId, item.task.id, "failed", { error: note });
-      return {
-        projectId: item.projectId,
-        taskId: item.task.id,
-        kind: item.task.kind,
-        automation: item.automation.mode,
-        result: { status: "failed", note },
-      };
+      return this.record(item, { status: "failed", note });
     }
+  }
+
+  private record(item: DropHunterTaskView, result: DropHunterAgentTaskExecutionResult): DropHunterAgentRunRecord {
+    return { projectId: item.projectId, taskId: item.task.id, kind: item.task.kind, automation: item.automation.mode, result };
   }
 }
 
 export class NoopCheckInExecutor implements DropHunterAgentTaskExecutor {
   readonly kinds = ["check-in"] as const;
-
+  supports(): boolean { return false; }
   async execute(context: DropHunterAgentTaskExecutionContext): Promise<DropHunterAgentTaskExecutionResult> {
-    return {
-      status: "skipped",
-      note: `No concrete check-in adapter configured for ${context.projectName}; task remains intentionally non-executed`,
-    };
+    return { status: "skipped", note: `unsupported: no concrete check-in adapter configured for ${context.projectName}` };
   }
 }
