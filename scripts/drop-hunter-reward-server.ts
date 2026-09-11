@@ -1,8 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
+  DropHunterProjectOverviewService,
   DropHunterRewardEvidenceBridge,
   DropHunterRewardService,
+  DropTaskAutomationPolicy,
   JsonFileDropHunterEvidenceStore,
+  JsonFileDropHunterProductStore,
   JsonFileDropHunterRewardStore,
   type DropHunterRewardSource,
   type DropHunterRewardStatus,
@@ -11,6 +14,7 @@ import {
 const port = Number(process.env.DROP_HUNTER_REWARD_API_PORT ?? 8788);
 const storePath = process.env.DROP_HUNTER_REWARD_PATH ?? "data/drop-hunter-rewards.json";
 const evidencePath = process.env.DROP_HUNTER_EVIDENCE_PATH ?? "data/drop-hunter-evidence.json";
+const productStorePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
 const statuses = new Set<DropHunterRewardStatus>(["detected", "claimable", "claimed", "confirmed", "dismissed"]);
 const sources = new Set<DropHunterRewardSource>(["onchain", "campaign", "manual", "unknown"]);
 
@@ -19,6 +23,9 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DROP_H
 const store = new JsonFileDropHunterRewardStore(storePath);
 const rewards = new DropHunterRewardService(store);
 const evidence = new JsonFileDropHunterEvidenceStore(evidencePath);
+const products = new JsonFileDropHunterProductStore(productStorePath);
+const policy = new DropTaskAutomationPolicy({ maxAutonomousCostUsd: 0, allowAutonomousGas: false, allowAutonomousWalletActions: false });
+const overview = new DropHunterProjectOverviewService(products, evidence, store, policy);
 const rewardEvidence = new DropHunterRewardEvidenceBridge(rewards);
 
 createServer(async (req, res) => {
@@ -29,7 +36,12 @@ createServer(async (req, res) => {
     const path = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
 
     if (req.method === "GET" && path.length === 1 && path[0] === "health") {
-      return send(res, 200, { ok: true, service: "drop-hunter-rewards", storePath, evidencePath });
+      return send(res, 200, { ok: true, service: "drop-hunter-rewards", storePath, evidencePath, productStorePath });
+    }
+    if (req.method === "GET" && path.length === 3 && path[0] === "projects" && path[2] === "overview") {
+      const value = await overview.get(path[1]);
+      if (!value) return send(res, 404, { error: `drop hunter project not found: ${path[1]}` });
+      return send(res, 200, { overview: value });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "rewards") {
       const projectId = url.searchParams.get("projectId") ?? undefined;
