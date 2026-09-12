@@ -45,6 +45,7 @@ export * from "./attention-queue.js";
 export * from "./approval-inbox.js";
 export * from "./agent-task-runner.js";
 export * from "./agent-runtime-status.js";
+export * from "./agent-runtime-controller.js";
 export * from "./http-check-in-executor.js";
 export * from "./runtime-orchestrator.js";
 export * from "./chain-readiness.js";

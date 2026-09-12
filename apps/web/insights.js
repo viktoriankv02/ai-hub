@@ -170,4 +170,5 @@ function escapeHtml(value) {
 function escapeAttr(value) { return escapeHtml(value).replace(/'/g, "&#39;"); }
 
 await refreshInsights();
+document.addEventListener("drop-hunter:refresh-insights", () => void refreshInsights());
 setInterval(refreshInsights, 15000);

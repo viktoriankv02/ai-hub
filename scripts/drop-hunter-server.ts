@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import {
   ContractDeploymentPreviewBuilder,
   DropHunterApprovalInbox,
+  DropHunterAgentRuntimeController,
+  DropHunterAgentTaskRunner,
   DropHunterAttentionQueue,
   DropHunterContractDeploymentEngine,
   DropHunterContractTemplateCatalog,
@@ -12,6 +14,7 @@ import {
   EthersDeploymentReceiptProvider,
   GitHubRepositoryOpportunitySource,
   HardhatJsonArtifactLoader,
+  HttpCheckInExecutor,
   JsonFileDropHunterEvidenceStore,
   JsonFileDropHunterAgentRuntimeStatusStore,
   JsonFileDropHunterProductStore,
@@ -21,10 +24,13 @@ import {
   deploymentPreviewHash,
   deriveLearningSignals,
   isDropHunterAgentStatusStale,
+  parseHttpCheckInTargetsJson,
   type DiscoverySource,
   type DropHunterContractTemplateId,
   type DropHunterProjectStatus,
   type DropHunterTaskStatus,
+  type DropHunterAgentTaskExecutionContext,
+  type DropHunterAgentTaskExecutor,
 } from "../agents/drop-hunter/index.js";
 import { OfficialPageOpportunitySource, parseOfficialPagesJson } from "../agents/drop-hunter/official-page-opportunity-source.js";
 import { getDropHunterChainReadiness } from "../agents/drop-hunter/chain-readiness.js";
@@ -41,11 +47,16 @@ const maxResults = Number(process.env.DROP_HUNTER_GITHUB_MAX_RESULTS ?? 10);
 const maxAutonomousCostUsd = Number(process.env.DROP_HUNTER_MAX_AUTONOMOUS_COST_USD ?? 0);
 const allowAutonomousGas = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_GAS === "true";
 const allowAutonomousWallet = process.env.DROP_HUNTER_ALLOW_AUTONOMOUS_WALLET === "true";
+const agentIntervalMs = Number(process.env.DROP_HUNTER_AGENT_INTERVAL_MS ?? 300000);
+const agentMaxTasks = Number(process.env.DROP_HUNTER_AGENT_MAX_TASKS ?? 10);
+const checkInTargets = parseHttpCheckInTargetsJson(process.env.DROP_HUNTER_CHECKIN_TARGETS_JSON);
 const officialPages = parseOfficialPagesJson(process.env.DROP_HUNTER_OFFICIAL_PAGES_JSON);
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("DROP_HUNTER_API_PORT must be a valid TCP port");
 if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) throw new Error("DROP_HUNTER_GITHUB_MAX_RESULTS must be between 1 and 100");
 if (!Number.isFinite(maxAutonomousCostUsd) || maxAutonomousCostUsd < 0) throw new Error("DROP_HUNTER_MAX_AUTONOMOUS_COST_USD must be non-negative");
+if (!Number.isInteger(agentIntervalMs) || agentIntervalMs < 60000) throw new Error("DROP_HUNTER_AGENT_INTERVAL_MS must be at least 60000");
+if (!Number.isInteger(agentMaxTasks) || agentMaxTasks < 1 || agentMaxTasks > 100) throw new Error("DROP_HUNTER_AGENT_MAX_TASKS must be between 1 and 100");
 
 const policy = new DropTaskAutomationPolicy({
   maxAutonomousCostUsd,
@@ -64,6 +75,18 @@ if (officialPages.length > 0) sources.push(new OfficialPageOpportunitySource({ p
 const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
 const control = new DropHunterProductControlPlane(store, repository, ingestion, policy, () => new Date(), evidence);
+const agentExecutors: DropHunterAgentTaskExecutor[] = [];
+if (checkInTargets.length > 0) {
+  const checkIn = new HttpCheckInExecutor({ targets: checkInTargets });
+  const supportedProjects = new Set(checkInTargets.map((target) => target.projectId));
+  agentExecutors.push({
+    kinds: checkIn.kinds,
+    supports(context: DropHunterAgentTaskExecutionContext) { return supportedProjects.has(context.projectId); },
+    execute(context) { return checkIn.execute(context); },
+  });
+}
+const agentRunner = new DropHunterAgentTaskRunner(control, agentExecutors, { maxTasksPerRun: agentMaxTasks });
+const agentController = new DropHunterAgentRuntimeController(agentRunner, agentStatus, { intervalMs: agentIntervalMs, trustedCheckIns: checkInTargets.length });
 const attention = new DropHunterAttentionQueue(policy);
 const approvals = new DropHunterApprovalInbox(store, policy);
 const contractTemplates = new DropHunterContractTemplateCatalog();
@@ -97,6 +120,14 @@ createServer(async (req, res) => {
         online: Boolean(status && status.state !== "stopped" && !isDropHunterAgentStatusStale(status)),
         status,
       });
+    }
+    if (req.method === "POST" && path.length === 2 && path[0] === "agent" && path[1] === "run") {
+      const existing = await agentStatus.read();
+      if (process.env.DROP_HUNTER_AGENT_AUTOSTART === "true" && existing && existing.state !== "stopped" && !isDropHunterAgentStatusStale(existing)) {
+        return send(res, 409, { error: "scheduled Drop Hunter agent is online; wait for its cycle instead of starting a competing runner" });
+      }
+      const result = await agentController.runOnce();
+      return send(res, 200, { result });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "chains") {
       return send(res, 200, { chains: getDropHunterChainReadiness() });

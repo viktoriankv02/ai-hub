@@ -193,6 +193,25 @@ async function refreshQueue() {
   }
 }
 
+async function runAgentOnce() {
+  const button = $("#run-agent");
+  button.disabled = true;
+  button.textContent = "Agent running…";
+  try {
+    const data = await api("/agent/run", { method: "POST", body: "{}" });
+    const result = data.result ?? {};
+    toast(`Agent completed ${result.completed ?? 0}; failed ${result.failed ?? 0}`);
+    await loadProjects();
+    await refreshQueue();
+    document.dispatchEvent(new CustomEvent("drop-hunter:refresh-insights"));
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Run agent once";
+  }
+}
+
 function renderQueue(autonomous, approval, manual) {
   $("#queue").innerHTML = `
     <div class="queue-summary">
@@ -298,6 +317,7 @@ $("#chain").addEventListener("change", render);
 $("#scan").addEventListener("click", scan);
 $("#plan").addEventListener("click", refreshQueue);
 $("#refresh-jobs").addEventListener("click", refreshQueue);
+$("#run-agent").addEventListener("click", runAgentOnce);
 $("#connect").addEventListener("click", connectWallet);
 $("#dialog-close").addEventListener("click", () => $("#task-dialog").close());
 $("#task-dialog").addEventListener("click", (event) => { if (event.target === $("#task-dialog")) $("#task-dialog").close(); });
