@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   ContractDeploymentPreviewBuilder,
+  DropHunterApprovalInbox,
   DropHunterAttentionQueue,
   DropHunterContractDeploymentEngine,
   DropHunterContractTemplateCatalog,
@@ -60,6 +61,7 @@ const discovery = new OpportunityDiscoveryRegistry(sources);
 const ingestion = new DropHunterProductIngestionService(discovery, repository, policy);
 const control = new DropHunterProductControlPlane(store, repository, ingestion, policy, () => new Date(), evidence);
 const attention = new DropHunterAttentionQueue(policy);
+const approvals = new DropHunterApprovalInbox(store, policy);
 const contractTemplates = new DropHunterContractTemplateCatalog();
 const deploymentEngine = new DropHunterContractDeploymentEngine(contractTemplates);
 const deploymentPreview = new ContractDeploymentPreviewBuilder(new HardhatJsonArtifactLoader());
@@ -92,6 +94,10 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "attention") {
       return send(res, 200, { items: attention.build(await control.listProjects()) });
+    }
+    if (req.method === "GET" && path.length === 1 && path[0] === "approvals") {
+      const requests = await approvals.list();
+      return send(res, 200, { requests, count: requests.length });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "contract-templates") {
       return send(res, 200, { templates: contractTemplates.list() });

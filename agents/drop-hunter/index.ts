@@ -42,6 +42,7 @@ export * from "./product-control-plane.js";
 export * from "./product-runtime.js";
 export * from "./project-overview.js";
 export * from "./attention-queue.js";
+export * from "./approval-inbox.js";
 export * from "./agent-task-runner.js";
 export * from "./http-check-in-executor.js";
 export * from "./runtime-orchestrator.js";

@@ -14,6 +14,7 @@ async function refreshInsights() {
     api("/chains"),
     api("/sources"),
     api("/attention"),
+    api("/approvals"),
     api("/history?limit=20"),
     api("/learning"),
   ]);
@@ -21,8 +22,41 @@ async function refreshInsights() {
   renderNetworks(valueOf(results[0])?.chains ?? []);
   renderSources(valueOf(results[1])?.sources ?? []);
   renderAttention(valueOf(results[2])?.items ?? []);
-  renderHistory(valueOf(results[3])?.records ?? []);
-  renderLearning(valueOf(results[4])?.signals ?? {});
+  renderApprovals(valueOf(results[3])?.requests ?? []);
+  renderHistory(valueOf(results[4])?.records ?? []);
+  renderLearning(valueOf(results[5])?.signals ?? {});
+}
+
+function renderApprovals(requests) {
+  const node = $("#approval-inbox");
+  if (!node) return;
+  node.innerHTML = `<div class="job-list">${requests.map((request) => `
+    <div class="job-row approval-request">
+      <div class="job-icon">A</div>
+      <span class="job-info">
+        <strong>${escapeHtml(request.projectName)} — ${escapeHtml(request.taskTitle)}</strong>
+        <small>${escapeHtml(chainLabel(request.chainId))} · ${escapeHtml(request.taskKind)} · ${escapeHtml(request.risk)} risk · ${costLabel(request)}</small>
+        <small>${escapeHtml(request.reasons?.join(" · ") || "Explicit approval required")}${request.rewardHint ? ` · Potential: ${escapeHtml(request.rewardHint)}` : ""}</small>
+      </span>
+      <button class="button compact primary" data-approve-project="${escapeAttr(request.projectId)}" data-approve-task="${escapeAttr(request.taskId)}">Approve</button>
+      <button class="button compact secondary" data-skip-project="${escapeAttr(request.projectId)}" data-skip-task="${escapeAttr(request.taskId)}">Skip</button>
+      <button class="button compact secondary" data-open="${escapeAttr(request.projectId)}">Details</button>
+    </div>`).join("") || empty("No actions are waiting for approval.")}</div>`;
+  node.querySelectorAll("[data-approve-task]").forEach((button) => button.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("drop-hunter:task-action", { detail: { projectId: button.dataset.approveProject, taskId: button.dataset.approveTask, action: "approve" } }));
+  }));
+  node.querySelectorAll("[data-skip-task]").forEach((button) => button.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("drop-hunter:task-action", { detail: { projectId: button.dataset.skipProject, taskId: button.dataset.skipTask, action: "skip" } }));
+  }));
+  node.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("drop-hunter:open-project", { detail: { projectId: button.dataset.open } }));
+  }));
+}
+
+function chainLabel(chainId) { return chainId ? `Chain ${chainId}` : "Chain not identified"; }
+function costLabel(request) {
+  if (Number.isFinite(Number(request.estimatedCostUsd))) return `estimated $${Number(request.estimatedCostUsd).toFixed(2)}`;
+  return request.requiresFunds ? "funds/gas required" : "no funds required";
 }
 
 function renderNetworks(chains) {
@@ -115,6 +149,7 @@ function formatDate(value) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
 }
+function escapeAttr(value) { return escapeHtml(value).replace(/'/g, "&#39;"); }
 
 await refreshInsights();
 setInterval(refreshInsights, 15000);

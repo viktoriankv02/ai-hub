@@ -301,6 +301,14 @@ $("#refresh-jobs").addEventListener("click", refreshQueue);
 $("#connect").addEventListener("click", connectWallet);
 $("#dialog-close").addEventListener("click", () => $("#task-dialog").close());
 $("#task-dialog").addEventListener("click", (event) => { if (event.target === $("#task-dialog")) $("#task-dialog").close(); });
+document.addEventListener("drop-hunter:task-action", (event) => {
+  const { projectId, taskId, action } = event.detail ?? {};
+  if (projectId && taskId && (action === "approve" || action === "skip")) void taskAction(projectId, taskId, action);
+});
+document.addEventListener("drop-hunter:open-project", (event) => {
+  const projectId = event.detail?.projectId;
+  if (projectId) showTasks(projectId);
+});
 
 if (globalThis.ethereum?.on) {
   globalThis.ethereum.on("accountsChanged", (accounts) => { walletAddress = accounts[0] ?? null; updateWalletButton(); });

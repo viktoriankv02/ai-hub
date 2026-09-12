@@ -64,6 +64,15 @@
 
     <section class="agent-panel">
       <div class="panel-heading">
+        <p class="eyebrow">APPROVAL INBOX</p>
+        <h2>Actions waiting for you</h2>
+        <p class="muted">Review risk, estimated cost and wallet requirements before allowing an agent to continue.</p>
+      </div>
+      <div id="approval-inbox" class="queue"><div class="empty compact-empty"><span>Loading approval requests…</span></div></div>
+    </section>
+
+    <section class="agent-panel">
+      <div class="panel-heading">
         <p class="eyebrow">AI AGENT CONTROL</p>
         <h2>Task queue</h2>
         <p class="muted">Autonomous tasks can be scheduled by the agent. Wallet transactions, gas spending and higher-risk actions remain approval-gated by default.</p>
@@ -133,6 +142,7 @@
       <button id="dialog-close" class="icon-button" aria-label="Close">×</button>
     </div>
     <div id="dialog-summary" class="dialog-summary"></div>
+    <div id="dialog-overview" class="dialog-tasks"><div class="empty compact-empty"><span>Open a project to load evidence and rewards.</span></div></div>
     <div id="dialog-tasks" class="dialog-tasks"></div>
   </dialog>
 
@@ -156,5 +166,6 @@
   <script type="module" src="./insights.js"></script>
   <script type="module" src="./deploy-ui.js"></script>
   <script type="module" src="./rewards.js"></script>
+  <script type="module" src="./project-overview.js"></script>
 </body>
 </html>
