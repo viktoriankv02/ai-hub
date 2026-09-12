@@ -13,12 +13,14 @@ import {
   GitHubRepositoryOpportunitySource,
   HardhatJsonArtifactLoader,
   JsonFileDropHunterEvidenceStore,
+  JsonFileDropHunterAgentRuntimeStatusStore,
   JsonFileDropHunterProductStore,
   OpportunityDiscoveryRegistry,
   PRIORITY_OPPORTUNITIES,
   StaticOpportunitySource,
   deploymentPreviewHash,
   deriveLearningSignals,
+  isDropHunterAgentStatusStale,
   type DiscoverySource,
   type DropHunterContractTemplateId,
   type DropHunterProjectStatus,
@@ -30,6 +32,7 @@ import { getDropHunterChainReadiness } from "../agents/drop-hunter/chain-readine
 const port = Number(process.env.DROP_HUNTER_API_PORT ?? 8787);
 const storePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
 const evidencePath = process.env.DROP_HUNTER_EVIDENCE_PATH ?? "data/drop-hunter-evidence.json";
+const agentStatusPath = process.env.DROP_HUNTER_AGENT_STATUS_PATH ?? "data/drop-hunter-agent-status.json";
 const queries = (process.env.DROP_HUNTER_GITHUB_QUERIES ?? "incentivized testnet")
   .split(",")
   .map((query) => query.trim())
@@ -51,6 +54,7 @@ const policy = new DropTaskAutomationPolicy({
 });
 const store = new JsonFileDropHunterProductStore(storePath);
 const evidence = new JsonFileDropHunterEvidenceStore(evidencePath);
+const agentStatus = new JsonFileDropHunterAgentRuntimeStatusStore(agentStatusPath);
 const repository = new DropHunterProjectRepository(store);
 const sources: DiscoverySource[] = [
   new StaticOpportunitySource("priority-catalog", "AI Hub priority catalog", PRIORITY_OPPORTUNITIES),
@@ -85,6 +89,14 @@ createServer(async (req, res) => {
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "dashboard") {
       return send(res, 200, await control.dashboard());
+    }
+    if (req.method === "GET" && path.length === 2 && path[0] === "agent" && path[1] === "status") {
+      const status = await agentStatus.read();
+      return send(res, 200, {
+        configured: process.env.DROP_HUNTER_AGENT_AUTOSTART === "true",
+        online: Boolean(status && status.state !== "stopped" && !isDropHunterAgentStatusStale(status)),
+        status,
+      });
     }
     if (req.method === "GET" && path.length === 1 && path[0] === "chains") {
       return send(res, 200, { chains: getDropHunterChainReadiness() });

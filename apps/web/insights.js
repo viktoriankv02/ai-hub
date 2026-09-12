@@ -17,6 +17,7 @@ async function refreshInsights() {
     api("/approvals"),
     api("/history?limit=20"),
     api("/learning"),
+    api("/agent/status"),
   ]);
 
   renderNetworks(valueOf(results[0])?.chains ?? []);
@@ -25,7 +26,24 @@ async function refreshInsights() {
   renderApprovals(valueOf(results[3])?.requests ?? []);
   renderHistory(valueOf(results[4])?.records ?? []);
   renderLearning(valueOf(results[5])?.signals ?? {});
+  renderAgentStatus(valueOf(results[6]) ?? {});
 }
+
+function renderAgentStatus(data) {
+  const node = $("#agent-runtime-status");
+  if (!node) return;
+  const status = data.status;
+  const state = data.online ? status?.state ?? "idle" : data.configured ? "offline" : "disabled";
+  const result = status?.lastResult;
+  node.innerHTML = `<div class="queue-summary">
+    <span class="queue-item ${data.online ? "done" : "waiting"}"><i></i>Agent ${escapeHtml(state)}</span>
+    <span class="queue-item"><i></i>${number(result?.completed)} completed last cycle</span>
+    <span class="queue-item"><i></i>${number(result?.failed)} failed last cycle</span>
+    <span class="queue-item"><i></i>${number(status?.trustedCheckIns)} trusted check-ins</span>
+  </div>${status?.lastError ? `<div class="queue-offline"><strong>Last agent error</strong><span>${escapeHtml(status.lastError)}</span></div>` : ""}`;
+}
+
+function number(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
 
 function renderApprovals(requests) {
   const node = $("#approval-inbox");

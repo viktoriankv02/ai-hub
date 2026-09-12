@@ -4,6 +4,7 @@ import {
   DropHunterProjectRepository,
   DropTaskAutomationPolicy,
   HttpCheckInExecutor,
+  JsonFileDropHunterAgentRuntimeStatusStore,
   JsonFileDropHunterEvidenceStore,
   JsonFileDropHunterProductStore,
   parseHttpCheckInTargetsJson,
@@ -13,6 +14,7 @@ import {
 
 const storePath = process.env.DROP_HUNTER_STORE_PATH ?? "data/drop-hunter-projects.json";
 const evidencePath = process.env.DROP_HUNTER_EVIDENCE_PATH ?? "data/drop-hunter-evidence.json";
+const statusPath = process.env.DROP_HUNTER_AGENT_STATUS_PATH ?? "data/drop-hunter-agent-status.json";
 const intervalMs = Number(process.env.DROP_HUNTER_AGENT_INTERVAL_MS ?? 300000);
 const maxTasks = Number(process.env.DROP_HUNTER_AGENT_MAX_TASKS ?? 10);
 const targets = parseHttpCheckInTargetsJson(process.env.DROP_HUNTER_CHECKIN_TARGETS_JSON);
@@ -37,16 +39,24 @@ if (targets.length > 0) {
   });
 }
 const runner = new DropHunterAgentTaskRunner(control, executors, { maxTasksPerRun: maxTasks });
+const status = new JsonFileDropHunterAgentRuntimeStatusStore(statusPath);
 let running = false;
 
 async function cycle(): Promise<void> {
   if (running) return;
   running = true;
+  const startedAt = new Date().toISOString();
+  await status.write({ version: 1, state: "running", updatedAt: startedAt, startedAt, intervalMs, trustedCheckIns: targets.length });
   try {
     const result = await runner.runOnce();
+    const completedAt = new Date().toISOString();
+    await status.write({ version: 1, state: "idle", updatedAt: completedAt, startedAt, completedAt, nextRunAt: new Date(Date.now() + intervalMs).toISOString(), intervalMs, trustedCheckIns: targets.length, lastResult: result });
     console.log(`[Drop Hunter agent] considered=${result.considered} executed=${result.executed} completed=${result.completed} failed=${result.failed}`);
   } catch (error) {
-    console.error("[Drop Hunter agent] cycle failed:", error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    const completedAt = new Date().toISOString();
+    await status.write({ version: 1, state: "error", updatedAt: completedAt, startedAt, completedAt, nextRunAt: new Date(Date.now() + intervalMs).toISOString(), intervalMs, trustedCheckIns: targets.length, lastError: message });
+    console.error("[Drop Hunter agent] cycle failed:", message);
   } finally {
     running = false;
   }
@@ -56,9 +66,11 @@ console.log(`Drop Hunter safe agent worker started; interval=${intervalMs}ms; tr
 await cycle();
 const timer = setInterval(() => void cycle(), intervalMs);
 
-function shutdown(): void {
+async function shutdown(): Promise<void> {
   clearInterval(timer);
+  const updatedAt = new Date().toISOString();
+  await status.write({ version: 1, state: "stopped", updatedAt, completedAt: updatedAt, intervalMs, trustedCheckIns: targets.length });
   process.exit(0);
 }
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", () => void shutdown());
+process.once("SIGTERM", () => void shutdown());
