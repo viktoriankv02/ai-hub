@@ -2,16 +2,19 @@ import type { ProjectOpportunity } from "./types.js";
 import type { DropTask, DropTaskKind, DropTaskRisk, TaskExtractionResult } from "./task-model.js";
 
 const RULES: Array<{ pattern: RegExp; kind: DropTaskKind; risk: DropTaskRisk; automated: boolean; wallet: boolean; gas: boolean }> = [
+  { pattern: /check[- ]?in|daily\s+(visit|claim|check)|weekly\s+(visit|claim|check)/i, kind: "check-in", risk: "low", automated: true, wallet: false, gas: false },
+  { pattern: /faucet|testnet\s+tokens?|request\s+tokens?/i, kind: "faucet", risk: "low", automated: true, wallet: false, gas: false },
   { pattern: /follow|like|retweet|post|social|twitter|x\.com/i, kind: "social", risk: "low", automated: false, wallet: false, gas: false },
   { pattern: /discord|telegram|community|join/i, kind: "community", risk: "low", automated: false, wallet: false, gas: false },
   { pattern: /bridge|bridging/i, kind: "bridge", risk: "medium", automated: true, wallet: true, gas: true },
   { pattern: /swap|trade/i, kind: "swap", risk: "medium", automated: true, wallet: true, gas: true },
-  { pattern: /liquidity|lp|pool/i, kind: "liquidity", risk: "high", automated: true, wallet: true, gas: true },
+  { pattern: /liquidity|\blp\b|pool/i, kind: "liquidity", risk: "high", automated: true, wallet: true, gas: true },
   { pattern: /stake|staking/i, kind: "stake", risk: "high", automated: true, wallet: true, gas: true },
-  { pattern: /deploy|developer|build|contract/i, kind: "deploy", risk: "medium", automated: true, wallet: true, gas: true },
+  { pattern: /deploy|developer|build|contract\s+deployment/i, kind: "deploy", risk: "medium", automated: true, wallet: true, gas: true },
   { pattern: /mint|nft|erc-?721|erc-?1155/i, kind: "mint", risk: "medium", automated: true, wallet: true, gas: true },
+  { pattern: /interact\s+with\s+(a\s+)?contract|contract\s+interaction|call\s+(a\s+)?contract/i, kind: "contract-call", risk: "medium", automated: true, wallet: true, gas: true },
   { pattern: /quest|task|campaign|galxe|layer3|zealy/i, kind: "quest", risk: "low", automated: false, wallet: false, gas: false },
-  { pattern: /verify|verification|attest|proof/i, kind: "verify", risk: "low", automated: false, wallet: false, gas: false },
+  { pattern: /verify|verification|attest|proof/i, kind: "verify", risk: "low", automated: true, wallet: false, gas: false },
   { pattern: /register\s+(the\s+)?chain|chain\s+registration/i, kind: "other", risk: "low", automated: true, wallet: true, gas: true },
   { pattern: /record\s+(verified\s+)?activity|log\s+activity/i, kind: "other", risk: "low", automated: true, wallet: true, gas: true },
   { pattern: /test\s+reward\s+flow|reward\s+flow/i, kind: "other", risk: "high", automated: true, wallet: true, gas: true },
@@ -64,15 +67,25 @@ function makeTask(
     requiresWallet: rule.wallet, requiresGas: rule.gas,
     requiresUserApproval: rule.risk !== "low" || rule.wallet,
     rewardHint: opportunity.signals.rewardSignals !== undefined ? `Reward signal ${opportunity.signals.rewardSignals}/100` : undefined,
-    deadline: options.defaultDeadline, prerequisites: [], evidenceRequired: evidenceFor(rule.kind),
+    deadline: options.defaultDeadline,
+    recurrence: recurrenceFor(rule.kind, title),
+    prerequisites: [], evidenceRequired: evidenceFor(rule.kind),
     source: options.source ?? opportunity.sources[0] ?? "opportunity",
   };
+}
+
+function recurrenceFor(kind: DropTaskKind, title: string): DropTask["recurrence"] {
+  if (kind !== "check-in") return "once";
+  if (/weekly/i.test(title)) return "weekly";
+  if (/monthly/i.test(title)) return "monthly";
+  return "daily";
 }
 
 function evidenceFor(kind: DropTaskKind): string[] {
   switch (kind) {
     case "social": case "community": case "quest": return ["external campaign proof or platform completion state"];
-    case "bridge": case "swap": case "liquidity": case "stake": case "deploy": case "mint": return ["transaction hash", "target chain", "wallet address"];
+    case "check-in": case "faucet": return ["source completion state or response reference"];
+    case "bridge": case "swap": case "liquidity": case "stake": case "deploy": case "mint": case "contract-call": return ["transaction hash", "target chain", "wallet address"];
     case "verify": return ["verification or attestation reference"];
     default: return ["source-defined completion evidence"];
   }
